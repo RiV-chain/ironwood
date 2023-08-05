@@ -20,7 +20,7 @@ type PacketConn struct {
 	actor        phony.Inbox
 	core         *core
 	recv         chan *dhtTraffic //read buffer
-	oobHandler   func(ed25519.PublicKey, ed25519.PublicKey, []byte)
+	oobHandler   func([]byte, []byte, []byte)
 	readDeadline *deadline
 	closeMutex   sync.Mutex
 	closed       chan struct{}
@@ -166,7 +166,7 @@ func (pc *PacketConn) SetWriteDeadline(t time.Time) error {
 // This function blocks while the net.Conn is in use, and returns an error if any occurs.
 // This function returns (almost) immediately if PacketConn.Close() is called.
 // In all cases, the net.Conn is closed before returning.
-func (pc *PacketConn) HandleConn(key ed25519.PublicKey, conn net.Conn, prio uint8) error {
+func (pc *PacketConn) HandleConn(key []byte, conn net.Conn, prio uint8) error {
 	defer conn.Close()
 	if len(key) != publicKeySize {
 		return errors.New("incorrect key length")
@@ -190,7 +190,7 @@ func (pc *PacketConn) HandleConn(key ed25519.PublicKey, conn net.Conn, prio uint
 // SendOutOfBand sends some out-of-band data to a key.
 // The data will be forwarded towards the destination key as far as possible, and then handled by the out-of-band handler of the terminal node.
 // This could be used to do e.g. key discovery based on an incomplete key, or to implement application-specific helpers for debugging and analytics.
-func (pc *PacketConn) SendOutOfBand(toKey ed25519.PublicKey, data []byte) error {
+func (pc *PacketConn) SendOutOfBand(toKey []byte, data []byte) error {
 	select {
 	case <-pc.closed:
 		return errors.New("closed")
@@ -211,7 +211,7 @@ func (pc *PacketConn) SendOutOfBand(toKey ed25519.PublicKey, data []byte) error 
 // SetOutOfBandHandler sets a function to handle out-of-band data.
 // This function will be called every time out-of-band data is received.
 // If no handler has been set, then any received out-of-band data is dropped.
-func (pc *PacketConn) SetOutOfBandHandler(handler func(fromKey, toKey ed25519.PublicKey, data []byte)) error {
+func (pc *PacketConn) SetOutOfBandHandler(handler func(fromKey, toKey []byte, data []byte)) error {
 	var err error
 	phony.Block(&pc.actor, func() {
 		select {
@@ -275,8 +275,8 @@ func (pc *PacketConn) handleTraffic(tr *dhtTraffic) {
 			}
 		case wireTrafficOutOfBand:
 			if pc.oobHandler != nil {
-				source := append(ed25519.PublicKey(nil), tr.source[:]...)
-				dest := append(ed25519.PublicKey(nil), tr.dest[:]...)
+				source := append([]byte(nil), tr.source[:]...)
+				dest := append([]byte(nil), tr.dest[:]...)
 				msg := append([]byte(nil), tr.payload[:]...)
 				// TODO something smarter than spamming goroutines
 				go pc.oobHandler(source, dest, msg)
