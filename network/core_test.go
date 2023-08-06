@@ -51,10 +51,10 @@ func TestTwoNodes(t *testing.T) {
 		phony.Block(tB, func() {
 			lB = tB._treeLookup(sA)
 		})
-		if lA == nil || !bytes.Equal(lA.key[:], tB.core.crypto.publicKey[:]) {
+		if lA == nil || !bytes.Equal(lA.domain[:], tB.core.crypto.publicKey[:]) {
 			continue
 		}
-		if lB == nil || !bytes.Equal(lB.key[:], tA.core.crypto.publicKey[:]) {
+		if lB == nil || !bytes.Equal(lB.domain[:], tA.core.crypto.publicKey[:]) {
 			continue
 		}
 		break
@@ -139,7 +139,7 @@ func TestLineNetwork(t *testing.T) {
 	for aIdx := range conns {
 		a := conns[aIdx]
 		aAddr := a.LocalAddr()
-		var aK publicKey
+		var aK publicDomain
 		copy(aK[:], aAddr.(types.Addr))
 		for bIdx := range conns {
 			if bIdx == aIdx {
@@ -180,7 +180,7 @@ func TestLineNetwork(t *testing.T) {
 						}
 						//panic("read problem")
 					}
-					var fK publicKey
+					var fK publicDomain
 					copy(fK[:], from.(types.Addr))
 					if fK.equal(aK) {
 						break
@@ -204,7 +204,7 @@ func TestLineNetwork(t *testing.T) {
 						prev = k.addr().String()
 					}
 					if dinfo := conn.core.dhtree.next; dinfo != nil {
-						next = dinfo.key.addr().String()
+						next = dinfo.domain.addr().String()
 					}
 					root = conn.core.dhtree.self.root.addr().String()
 					t.Log(prev, ":", here, ":", next, ":", root)
@@ -256,7 +256,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 	for aIdx := range conns {
 		a := conns[aIdx]
 		aAddr := a.LocalAddr()
-		var aK publicKey
+		var aK publicDomain
 		copy(aK[:], aAddr.(types.Addr))
 		for bIdx := range conns {
 			if bIdx == aIdx {
@@ -297,7 +297,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 						}
 						//panic("read problem")
 					}
-					var fK publicKey
+					var fK publicDomain
 					copy(fK[:], from.(types.Addr))
 					if fK.equal(aK) {
 						break
@@ -321,7 +321,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 						prev = k.addr().String()
 					}
 					if dinfo := conn.core.dhtree.next; dinfo != nil {
-						next = dinfo.key.addr().String()
+						next = dinfo.domain.addr().String()
 					}
 					root = conn.core.dhtree.self.root.addr().String()
 					t.Log(prev, ":", here, ":", next, ":", root)
@@ -343,7 +343,7 @@ func waitForRoot(conns []*PacketConn, timeout time.Duration) {
 		if time.Since(begin) > timeout {
 			panic("timeout")
 		}
-		var root publicKey
+		var root publicDomain
 		for _, conn := range conns {
 			phony.Block(&conn.core.dhtree, func() {
 				root = conn.core.dhtree.self.root
@@ -352,7 +352,7 @@ func waitForRoot(conns []*PacketConn, timeout time.Duration) {
 		}
 		var bad bool
 		for _, conn := range conns {
-			var croot publicKey
+			var croot publicDomain
 			phony.Block(&conn.core.dhtree, func() {
 				croot = conn.core.dhtree.self.root
 			})

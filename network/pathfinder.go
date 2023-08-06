@@ -14,15 +14,15 @@ const (
 // WARNING The pathfinder should only be used from within the dhtree's actor, it's not threadsafe
 type pathfinder struct {
 	dhtree *dhtree
-	paths  map[publicKey]*pathInfo
+	paths  map[publicDomain]*pathInfo
 }
 
 func (pf *pathfinder) init(t *dhtree) {
 	pf.dhtree = t
-	pf.paths = make(map[publicKey]*pathInfo)
+	pf.paths = make(map[publicDomain]*pathInfo)
 }
 
-func (pf *pathfinder) _getNotify(dest publicKey, keepAlive bool) *pathNotify {
+func (pf *pathfinder) _getNotify(dest publicDomain, keepAlive bool) *pathNotify {
 	throttle := pathfinderTHROTTLE
 	if keepAlive {
 		throttle = pathfinderTIMEOUT
@@ -75,7 +75,7 @@ func (pf *pathfinder) _getResponse(l *pathLookup) *pathResponse {
 	return r
 }
 
-func (pf *pathfinder) _getPath(dest publicKey) []peerPort {
+func (pf *pathfinder) _getPath(dest publicDomain) []peerPort {
 	var info *pathInfo
 	if nfo, isIn := pf.paths[dest]; isIn {
 		info = nfo
@@ -133,7 +133,7 @@ func (pf *pathfinder) handleResponse(from phony.Actor, r *pathResponse) {
 	})
 }
 
-func (pf *pathfinder) _doNotify(dest publicKey, keepAlive bool) {
+func (pf *pathfinder) _doNotify(dest publicDomain, keepAlive bool) {
 	if n := pf._getNotify(dest, keepAlive); n != nil {
 		pf.handleNotify(nil, n) // TODO pf._handleNotify
 	}
@@ -166,8 +166,8 @@ type pathInfo struct {
  **************/
 
 type pathNotify struct {
-	sig   signature // TODO? remove this? is it really useful for anything?...
-	dest  publicKey // Who to send the notify to
+	sig   signature    // TODO? remove this? is it really useful for anything?...
+	dest  publicDomain // Who to send the notify to
 	label *treeLabel
 }
 
@@ -265,7 +265,7 @@ func (l *pathLookup) decode(data []byte) error {
 
 type pathResponse struct {
 	// TODO? a sig or something? Since we can't sign the rpath, which is the part we care about...
-	from  publicKey
+	from  publicDomain
 	path  []peerPort
 	rpath []peerPort
 }

@@ -20,9 +20,9 @@ func TestMarshalTreeInfo(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		var pk publicKey
+		var pk publicDomain
 		copy(pk[:], newPub)
-		info = info.add(sk, &peer{key: pk})
+		info = info.add(sk, &peer{domain: pk})
 		if !info.checkSigs() {
 			t.Log(len(info.hops))
 			t.Log(info.hops[len(info.hops)-1].sig)
@@ -78,9 +78,9 @@ func TestMarshalDHTBootstrap(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		var pk publicKey
+		var pk publicDomain
 		copy(pk[:], newPub)
-		info = info.add(sk, &peer{key: pk, port: 1})
+		info = info.add(sk, &peer{domain: pk, port: 1})
 		if !info.checkSigs() {
 			panic("checkSigs failed")
 		} else if !info.checkLoops() {
@@ -121,7 +121,7 @@ func TestMarshalDHTSetup(t *testing.T) {
 	}
 	dpc, _ := NewPacketConn(destPriv)
 	spc, _ := NewPacketConn(sourcePriv)
-	var pk publicKey
+	var pk publicDomain
 	copy(pk[:], sourcePub)
 	token := dpc.core.dhtree._getToken(pk)
 	setup := spc.core.dhtree._newSetup(token)

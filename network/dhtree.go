@@ -22,20 +22,20 @@ type dhtree struct {
 	phony.Inbox
 	core       *core
 	pathfinder pathfinder
-	expired    map[publicKey]treeExpiredInfo // stores root highest seq and when it expires
+	expired    map[publicDomain]treeExpiredInfo // stores root highest seq and when it expires
 	tinfos     map[*peer]*treeInfo
 	dinfos     map[dhtMapKey]*dhtInfo
-	self       *treeInfo              // self info
-	parent     *peer                  // peer that sent t.self to us
-	prev       *dhtInfo               // previous key in dht, who we maintain a path to
-	next       *dhtInfo               // next in dht, they maintain a path to us
-	dkeys      map[*dhtInfo]publicKey // map of *dhtInfo->destKey for current and past prev
-	seq        uint64                 // updated whenever we send a new setup, technically it doesn't need to increase (it just needs to be different)
-	btimer     *time.Timer            // time.AfterFunc to send bootstrap packets
-	stimer     *time.Timer            // time.AfterFunc for self/parent expiration
-	wait       bool                   // FIXME this shouldn't be needed
-	hseq       uint64                 // used to track the order treeInfo updates are handled
-	bwait      bool                   // wait before sending another bootstrap
+	self       *treeInfo                 // self info
+	parent     *peer                     // peer that sent t.self to us
+	prev       *dhtInfo                  // previous key in dht, who we maintain a path to
+	next       *dhtInfo                  // next in dht, they maintain a path to us
+	dkeys      map[*dhtInfo]publicDomain // map of *dhtInfo->destKey for current and past prev
+	seq        uint64                    // updated whenever we send a new setup, technically it doesn't need to increase (it just needs to be different)
+	btimer     *time.Timer               // time.AfterFunc to send bootstrap packets
+	stimer     *time.Timer               // time.AfterFunc for self/parent expiration
+	wait       bool                      // FIXME this shouldn't be needed
+	hseq       uint64                    // used to track the order treeInfo updates are handled
+	bwait      bool                      // wait before sending another bootstrap
 }
 
 type treeExpiredInfo struct {
@@ -45,10 +45,10 @@ type treeExpiredInfo struct {
 
 func (t *dhtree) init(c *core) {
 	t.core = c
-	t.expired = make(map[publicKey]treeExpiredInfo)
+	t.expired = make(map[publicDomain]treeExpiredInfo)
 	t.tinfos = make(map[*peer]*treeInfo)
 	t.dinfos = make(map[dhtMapKey]*dhtInfo)
-	t.dkeys = make(map[*dhtInfo]publicKey)
+	t.dkeys = make(map[*dhtInfo]publicDomain)
 	t.seq = uint64(time.Now().UnixNano())
 	r := make([]byte, 8)
 	if _, err := rand.Read(r); err != nil {
@@ -222,7 +222,7 @@ func (t *dhtree) _fix() {
 	}
 	// Clean up t.expired (remove anything worse than the current root)
 	for skey := range t.expired {
-		key := publicKey(skey)
+		key := publicDomain(skey)
 		if treeLess(t.self.root, key) {
 			delete(t.expired, skey)
 		}
@@ -251,7 +251,7 @@ func (t *dhtree) _treeLookup(dest *treeLabel) *peer {
 		case dist > bestDist:
 		case treeLess(info.from(), best.from()):
 			isBetter = true
-		case bestPeer != nil && bestPeer.key == p.key && p.prio < bestPeer.prio:
+		case bestPeer != nil && bestPeer.domain == p.domain && p.prio < bestPeer.prio:
 			// It's another link to the same next-hop node, but this link has a
 			// higher priority than the chosen one, so prefer it instead
 			isBetter = true
@@ -272,17 +272,17 @@ func (t *dhtree) _treeLookup(dest *treeLabel) *peer {
 // _dhtLookup selects the next hop needed to route closer to the destination in dht keyspace
 // this only uses the source direction of paths through the dht
 // bootstraps use slightly different logic, since they need to stop short of the destination key
-func (t *dhtree) _dhtLookup(dest publicKey, isBootstrap bool) *peer {
+func (t *dhtree) _dhtLookup(dest publicDomain, isBootstrap bool) *peer {
 	// Start by defining variables and helper functions
 	best := t.core.crypto.publicKey
 	var bestPeer *peer
 	var bestInfo *dhtInfo
 	// doUpdate is just to make sure we don't forget to update something
-	doUpdate := func(key publicKey, p *peer, d *dhtInfo) {
+	doUpdate := func(key publicDomain, p *peer, d *dhtInfo) {
 		best, bestPeer, bestInfo = key, p, d
 	}
 	// doCheckedUpdate checks if the provided key is better than the current best, and updates if so
-	doCheckedUpdate := func(key publicKey, p *peer, d *dhtInfo) {
+	doCheckedUpdate := func(key publicDomain, p *peer, d *dhtInfo) {
 		switch {
 		case !isBootstrap && key.equal(dest) && !best.equal(dest):
 			fallthrough
@@ -304,12 +304,12 @@ func (t *dhtree) _dhtLookup(dest publicKey, isBootstrap bool) *peer {
 	}
 	// doDHT updates best based on a DHT path
 	doDHT := func(info *dhtInfo) {
-		doCheckedUpdate(info.key, info.peer, info) // updates if the source is better
-		if bestInfo != nil && info.key.equal(bestInfo.key) {
+		doCheckedUpdate(info.domain, info.peer, info) // updates if the source is better
+		if bestInfo != nil && info.domain.equal(bestInfo.domain) {
 			if treeLess(info.root, bestInfo.root) {
-				doUpdate(info.key, info.peer, info) // same source, but the root is better
+				doUpdate(info.domain, info.peer, info) // same source, but the root is better
 			} else if info.root.equal(bestInfo.root) && info.rootSeq > bestInfo.rootSeq {
-				doUpdate(info.key, info.peer, info) // same source, same root, but the rootSeq is newer
+				doUpdate(info.domain, info.peer, info) // same source, same root, but the rootSeq is newer
 			}
 		}
 	}
@@ -328,11 +328,11 @@ func (t *dhtree) _dhtLookup(dest publicKey, isBootstrap bool) *peer {
 	}
 	// Check peers
 	for p := range t.tinfos {
-		if best.equal(p.key) {
+		if best.equal(p.domain) {
 			// The best next hop is one of our peers
 			// We may have stumbled upon them too early, as the ancestor of another peer
 			// Switch to using the direct route to this peer, just in case
-			doUpdate(p.key, p, nil)
+			doUpdate(p.domain, p, nil)
 		}
 	}
 	// Update based on our DHT infos
@@ -343,8 +343,8 @@ func (t *dhtree) _dhtLookup(dest publicKey, isBootstrap bool) *peer {
 	// a higher priority link if one is available
 	if bestPeer != nil {
 		for p := range t.tinfos {
-			if p.key == bestPeer.key && p.prio < bestPeer.prio {
-				doUpdate(p.key, p, nil)
+			if p.domain == bestPeer.domain && p.prio < bestPeer.prio {
+				doUpdate(p.domain, p, nil)
 			}
 		}
 	}
@@ -491,7 +491,7 @@ func (t *dhtree) _handleSetup(prev *peer, setup *dhtSetup) {
 	}
 	dinfo := new(dhtInfo)
 	dinfo.seq = setup.seq
-	dinfo.key = setup.token.source
+	dinfo.domain = setup.token.source
 	dinfo.peer = prev
 	dinfo.rest = next
 	dinfo.root = setup.token.dest.root
@@ -552,10 +552,10 @@ func (t *dhtree) _handleSetup(prev *peer, setup *dhtSetup) {
 			var doUpdate bool
 			if !dinfo.root.equal(t.self.root) || dinfo.rootSeq != t.self.seq {
 				// The root/seq is bad, so don't update
-			} else if dinfo.key.equal(t.next.key) {
+			} else if dinfo.domain.equal(t.next.domain) {
 				// It's an update from the current next
 				doUpdate = true
-			} else if dhtOrdered(t.core.crypto.publicKey, dinfo.key, t.next.key) {
+			} else if dhtOrdered(t.core.crypto.publicKey, dinfo.domain, t.next.domain) {
 				// It's an update from a better next
 				doUpdate = true
 			}
@@ -583,7 +583,7 @@ func (t *dhtree) _teardown(from *peer, teardown *dhtTeardown) {
 	if dinfo, isIn := t.dinfos[teardown.getMapKey()]; isIn {
 		if teardown.seq != dinfo.seq {
 			return
-		} else if !teardown.key.equal(dinfo.key) {
+		} else if !teardown.key.equal(dinfo.domain) {
 			panic("this should never happen")
 		}
 		var next *peer
@@ -687,7 +687,7 @@ func (t *dhtree) _getLabel() *treeLabel {
 	return label
 }
 
-func (t *dhtree) _getToken(source publicKey) *dhtSetupToken {
+func (t *dhtree) _getToken(source publicDomain) *dhtSetupToken {
 	token := new(dhtSetupToken)
 	token.source = source
 	token.dest = *t._getLabel()
@@ -702,18 +702,18 @@ func (t *dhtree) _getToken(source publicKey) *dhtSetupToken {
 type treeInfo struct {
 	time time.Time // Note: *NOT* serialized
 	hseq uint64    // Note: *NOT* serialized, set when handling the update
-	root publicKey
+	root publicDomain
 	seq  uint64
 	hops []treeHop
 }
 
 type treeHop struct {
-	next publicKey
+	next publicDomain
 	port peerPort
 	sig  signature
 }
 
-func (info *treeInfo) dest() publicKey {
+func (info *treeInfo) dest() publicDomain {
 	key := info.root
 	if len(info.hops) > 0 {
 		key = info.hops[len(info.hops)-1].next
@@ -721,7 +721,7 @@ func (info *treeInfo) dest() publicKey {
 	return key
 }
 
-func (info *treeInfo) from() publicKey {
+func (info *treeInfo) from() publicDomain {
 	key := info.root
 	if len(info.hops) > 1 {
 		// last hop is to this node, 2nd to last is to the previous hop, which is who this is from
@@ -753,7 +753,7 @@ func (info *treeInfo) checkSigs() bool {
 
 func (info *treeInfo) checkLoops() bool {
 	key := info.root
-	keys := make(map[publicKey]bool) // Used to avoid loops
+	keys := make(map[publicDomain]bool) // Used to avoid loops
 	for _, hop := range info.hops {
 		if keys[key] {
 			return false
@@ -774,10 +774,10 @@ func (info *treeInfo) add(priv privateKey, next *peer) *treeInfo {
 		bs = append(bs, hop.next[:]...)
 		bs = wireEncodeUint(bs, uint64(hop.port))
 	}
-	bs = append(bs, next.key[:]...)
+	bs = append(bs, next.domain[:]...)
 	bs = wireEncodeUint(bs, uint64(next.port))
 	sig := priv.sign(bs)
-	hop := treeHop{next: next.key, port: next.port, sig: sig}
+	hop := treeHop{next: next.domain, port: next.port, sig: sig}
 	newInfo := *info
 	newInfo.hops = nil
 	newInfo.hops = append(newInfo.hops, info.hops...)
@@ -851,8 +851,8 @@ func (info *treeInfo) decode(data []byte) error {
 
 type treeLabel struct {
 	sig  signature
-	key  publicKey
-	root publicKey
+	key  publicDomain
+	root publicDomain
 	seq  uint64
 	path []peerPort
 }
@@ -912,26 +912,26 @@ func (l *treeLabel) decode(data []byte) error {
 
 type dhtInfo struct {
 	seq     uint64
-	key     publicKey
+	domain  publicDomain
 	peer    *peer
 	rest    *peer
-	root    publicKey
+	root    publicDomain
 	rootSeq uint64
 	timer   *time.Timer // time.AfterFunc to clean up after timeout, stop this on teardown
 }
 
 func (info *dhtInfo) getTeardown() *dhtTeardown {
-	return &dhtTeardown{seq: info.seq, key: info.key, root: info.root, rootSeq: info.rootSeq}
+	return &dhtTeardown{seq: info.seq, key: info.domain, root: info.root, rootSeq: info.rootSeq}
 }
 
 type dhtMapKey struct {
-	key     publicKey
-	root    publicKey
+	key     publicDomain
+	root    publicDomain
 	rootSeq uint64
 }
 
 func (info *dhtInfo) getMapKey() dhtMapKey {
-	return dhtMapKey{info.key, info.root, info.rootSeq}
+	return dhtMapKey{info.domain, info.root, info.rootSeq}
 }
 
 /****************
@@ -970,9 +970,9 @@ func (dbs *dhtBootstrap) decode(data []byte) error {
 // Maybe remove the sig from treeLabel, put that in a signedTreeLabel?
 
 type dhtSetupToken struct {
-	sig    signature // Signed by dest
-	source publicKey // Who the dest permits a path from
-	dest   treeLabel // Path to dest
+	sig    signature    // Signed by dest
+	source publicDomain // Who the dest permits a path from
+	dest   treeLabel    // Path to dest
 }
 
 func (st *dhtSetupToken) bytesForSig() []byte {
@@ -1116,8 +1116,8 @@ func (s *dhtSetup) decode(data []byte) error {
 
 type dhtTeardown struct {
 	seq     uint64
-	key     publicKey
-	root    publicKey
+	key     publicDomain
+	root    publicDomain
 	rootSeq uint64
 }
 
@@ -1160,8 +1160,8 @@ func (t *dhtTeardown) decode(data []byte) error {
  **************/
 
 type dhtTraffic struct {
-	source  publicKey
-	dest    publicKey
+	source  publicDomain
+	dest    publicDomain
 	kind    byte // in-band vs out-of-band, TODO? separate type?
 	payload []byte
 }
@@ -1192,7 +1192,7 @@ func (t *dhtTraffic) decode(data []byte) error {
  * utility functions *
  *********************/
 
-func treeLess(key1, key2 publicKey) bool {
+func treeLess(key1, key2 publicDomain) bool {
 	for idx := range key1 {
 		switch {
 		case key1[idx] < key2[idx]:
@@ -1204,6 +1204,6 @@ func treeLess(key1, key2 publicKey) bool {
 	return false
 }
 
-func dhtOrdered(first, second, third publicKey) bool {
+func dhtOrdered(first, second, third publicDomain) bool {
 	return treeLess(first, second) && treeLess(second, third)
 }

@@ -12,13 +12,13 @@ const (
 	signatureSize  = ed25519.SignatureSize
 )
 
-type publicKey [publicKeySize]byte
+type publicDomain [publicKeySize]byte
 type privateKey [privateKeySize]byte
 type signature [signatureSize]byte
 
 type crypto struct {
 	privateKey privateKey
-	publicKey  publicKey
+	publicKey  publicDomain
 }
 
 func (key *privateKey) sign(message []byte) signature {
@@ -32,15 +32,15 @@ func (key privateKey) equal(comparedKey privateKey) bool {
 	return key == comparedKey
 }
 
-func (key *publicKey) verify(message []byte, sig *signature) bool {
+func (key *publicDomain) verify(message []byte, sig *signature) bool {
 	return ed25519.Verify(ed25519.PublicKey(key[:]), message, sig[:])
 }
 
-func (key publicKey) equal(comparedKey publicKey) bool {
+func (key publicDomain) equal(comparedKey publicDomain) bool {
 	return key == comparedKey
 }
 
-func (key publicKey) addr() types.Addr {
+func (key publicDomain) addr() types.Addr {
 	return types.Addr(key[:])
 }
 

@@ -6,8 +6,8 @@ import (
 )
 
 type pqStreamID struct {
-	source publicKey
-	dest   publicKey
+	source publicDomain
+	dest   publicDomain
 }
 
 type pqPacketInfo struct {

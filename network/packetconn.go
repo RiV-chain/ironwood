@@ -55,8 +55,8 @@ var dhtTrafficPool = sync.Pool{
 func getDHTTraffic() *dhtTraffic {
 	d := dhtTrafficPool.Get().(*dhtTraffic)
 	d.kind = wireDummy
-	d.source = publicKey{}
-	d.dest = publicKey{}
+	d.source = publicDomain{}
+	d.dest = publicDomain{}
 	d.payload = d.payload[:0]
 	return d
 }
@@ -171,7 +171,7 @@ func (pc *PacketConn) HandleConn(domain types.Domain, conn net.Conn, prio uint8)
 	if len(domain) != publicKeySize {
 		return errors.New("incorrect key length")
 	}
-	var pk publicKey
+	var pk publicDomain
 	copy(pk[:], domain)
 	if pc.core.crypto.publicKey.equal(pk) {
 		return errors.New("attempted to connect to self")

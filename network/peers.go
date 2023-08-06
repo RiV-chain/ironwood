@@ -28,7 +28,7 @@ func (ps *peers) init(c *core) {
 	ps.peers = make(map[peerPort]*peer)
 }
 
-func (ps *peers) addPeer(key publicKey, conn net.Conn, prio uint8) (*peer, error) {
+func (ps *peers) addPeer(key publicDomain, conn net.Conn, prio uint8) (*peer, error) {
 	var p *peer
 	var err error
 	ps.core.pconn.closeMutex.Lock()
@@ -50,7 +50,7 @@ func (ps *peers) addPeer(key publicKey, conn net.Conn, prio uint8) (*peer, error
 		p = new(peer)
 		p.peers = ps
 		p.conn = conn
-		p.key = key
+		p.domain = key
 		p.port = port
 		p.writer.peer = p
 		p.writer.timer = time.AfterFunc(0, func() {})
@@ -76,7 +76,7 @@ type peer struct {
 	phony.Inbox // Only used to process or send some protocol traffic
 	peers       *peers
 	conn        net.Conn
-	key         publicKey
+	domain      publicDomain
 	info        *treeInfo
 	port        peerPort
 	queue       packetQueue
@@ -246,7 +246,7 @@ func (p *peer) _handleTree(bs []byte) error {
 	if !info.checkSigs() {
 		return errors.New("invalid signature")
 	}
-	if !p.key.equal(info.from()) {
+	if !p.domain.equal(info.from()) {
 		return errors.New("unrecognized publicKey")
 	}
 	dest := info.hops[len(info.hops)-1].next
