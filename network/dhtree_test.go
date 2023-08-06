@@ -3,6 +3,7 @@ package network
 import (
 	"bytes"
 	"crypto/ed25519"
+	"encoding/hex"
 	"testing"
 
 	"github.com/Arceliar/ironwood/types"
@@ -91,7 +92,8 @@ func TestMarshalDHTBootstrap(t *testing.T) {
 		copy(sk[:], newPriv)
 	}
 	c := new(core)
-	c.init(priv, types.Domain("example"))
+	d1, _ := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001")
+	c.init(priv, types.Domain(d1))
 	c.dhtree.self = info
 	bootstrap := new(dhtBootstrap)
 	bootstrap.label = *c.dhtree._getLabel()
@@ -121,8 +123,10 @@ func TestMarshalDHTSetup(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	dpc, _ := NewPacketConn(destPriv, types.Domain("example1"))
-	spc, _ := NewPacketConn(sourcePriv, types.Domain("example1"))
+	d1, _ := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001")
+	d2, _ := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000002")
+	dpc, _ := NewPacketConn(destPriv, types.Domain(d1))
+	spc, _ := NewPacketConn(sourcePriv, types.Domain(d2))
 	var pk publicDomain
 	copy(pk[:], sourcePub)
 	token := dpc.core.dhtree._getToken(pk)

@@ -26,7 +26,7 @@ func (d *Debug) GetSessions() (infos []DebugSessionInfo) {
 	phony.Block(&d.pc.sessions, func() {
 		for key, session := range d.pc.sessions.sessions {
 			var info DebugSessionInfo
-			info.Domain = append(info.Domain, key[:]...)
+			info.Domain = types.Domain(key[:])
 			info.Uptime = time.Since(session.since)
 			info.RX, info.TX = session.rx, session.tx
 			infos = append(infos, info)

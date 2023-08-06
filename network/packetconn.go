@@ -101,7 +101,7 @@ func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	}
 	tr := getDHTTraffic()
 	tr.source = pc.core.crypto.publicDomain
-	copy(tr.dest[:], dest)
+	copy(tr.dest[:], dest[:])
 	tr.kind = wireTrafficStandard
 	tr.payload = append(tr.payload[:0], p...)
 	pc.core.dhtree.sendTraffic(nil, tr)
@@ -172,7 +172,7 @@ func (pc *PacketConn) HandleConn(domain types.Domain, conn net.Conn, prio uint8)
 		return errors.New("incorrect key length")
 	}
 	var pk publicDomain
-	copy(pk[:], domain)
+	copy(pk[:], domain[:])
 	if pc.core.crypto.publicDomain.equal(pk) {
 		return errors.New("attempted to connect to self")
 	}
@@ -201,7 +201,7 @@ func (pc *PacketConn) SendOutOfBand(toDomain types.Domain, data []byte) error {
 	}
 	var tr dhtTraffic
 	tr.source = pc.core.crypto.publicDomain
-	copy(tr.dest[:], toDomain)
+	copy(tr.dest[:], toDomain[:])
 	tr.kind = wireTrafficOutOfBand
 	tr.payload = append(tr.payload, data...)
 	pc.core.dhtree.sendTraffic(nil, &tr)
@@ -279,7 +279,7 @@ func (pc *PacketConn) handleTraffic(tr *dhtTraffic) {
 				dest := append([]byte(nil), tr.dest[:]...)
 				msg := append([]byte(nil), tr.payload[:]...)
 				// TODO something smarter than spamming goroutines
-				go pc.oobHandler(source, dest, msg)
+				go pc.oobHandler(types.Domain(source), types.Domain(dest), msg)
 			}
 			dhtTrafficPool.Put(tr)
 		default:

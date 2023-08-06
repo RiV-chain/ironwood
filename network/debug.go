@@ -46,8 +46,8 @@ type DebugPathInfo struct {
 
 func (d *Debug) GetSelf() (info DebugSelfInfo) {
 	phony.Block(&d.c.dhtree, func() {
-		info.Domain = append(info.Domain, d.c.crypto.publicDomain[:]...)
-		info.Root = append(info.Root, d.c.dhtree.self.root[:]...)
+		info.Domain = types.Domain(d.c.crypto.publicDomain)
+		info.Root = types.Domain(d.c.dhtree.self.root)
 		info.Coords = make([]uint64, 0)
 		for _, hop := range d.c.dhtree.self.hops {
 			info.Coords = append(info.Coords, uint64(hop.port))
@@ -61,8 +61,8 @@ func (d *Debug) GetPeers() (infos []DebugPeerInfo) {
 	phony.Block(&d.c.dhtree, func() {
 		for p, tinfo := range d.c.dhtree.tinfos {
 			var info DebugPeerInfo
-			info.Domain = append(info.Domain, p.domain[:]...)
-			info.Root = append(info.Root, tinfo.root[:]...)
+			info.Domain = types.Domain(p.domain)
+			info.Root = types.Domain(tinfo.root)
 			info.Coords = make([]uint64, 0)
 			for _, hop := range tinfo.hops {
 				info.Coords = append(info.Coords, uint64(hop.port))
@@ -82,7 +82,7 @@ func (d *Debug) GetDHT() (infos []DebugDHTInfo) {
 	phony.Block(&d.c.dhtree, func() {
 		for _, dinfo := range d.c.dhtree.dinfos {
 			var info DebugDHTInfo
-			info.Domain = append(info.Domain, dinfo.domain[:]...)
+			info.Domain = types.Domain(dinfo.domain)
 			if dinfo.peer != nil {
 				info.Port = uint64(dinfo.peer.port)
 			}
@@ -99,7 +99,7 @@ func (d *Debug) GetPaths() (infos []DebugPathInfo) {
 	phony.Block(&d.c.dhtree, func() {
 		for domain, pinfo := range d.c.dhtree.pathfinder.paths {
 			var info DebugPathInfo
-			info.Domain = append(info.Domain, domain[:]...)
+			info.Domain = types.Domain(domain)
 			info.Path = make([]uint64, 0)
 			for _, port := range pinfo.path {
 				info.Path = append(info.Path, uint64(port))

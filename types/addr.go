@@ -14,5 +14,5 @@ func (a Addr) Network() string {
 
 // String returns the Domain as a hexidecimal string, but is otherwise unused.
 func (a Addr) String() string {
-	return hex.EncodeToString(a)
+	return hex.EncodeToString(a[:])
 }

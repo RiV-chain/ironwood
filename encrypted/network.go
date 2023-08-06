@@ -70,7 +70,8 @@ func (m *netManager) read() {
 				msg := make([]byte, n)
 				copy(msg, buf[:n])
 				var fromKey edPub
-				copy(fromKey[:], from.(types.Addr))
+				fromBytes := from.(types.Addr)
+				copy(fromKey[:], fromBytes[:])
 				m.pc.sessions.handleData(m, &fromKey, msg)
 				m.Act(nil, rl) // continue to loop
 			}
