@@ -30,7 +30,7 @@ func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
 		if n, from, err = pc.PacketConn.ReadFrom(p); err != nil {
 			return
 		}
-		fromKey := ed25519.PublicKey(from.(types.Addr))
+		fromKey := types.Domain(from.(types.Addr))
 		msg, ok := pc.unpack(p[:n], fromKey)
 		if !ok {
 			continue // error?
@@ -70,16 +70,16 @@ func (pc *PacketConn) MTU() uint64 {
 	return pc.PacketConn.MTU() - ed25519.SignatureSize
 }
 
-func (pc *PacketConn) unpack(bs []byte, fromKey ed25519.PublicKey) (msg []byte, ok bool) {
+func (pc *PacketConn) unpack(bs []byte, fromKey types.Domain) (msg []byte, ok bool) {
 	if len(bs) < ed25519.SignatureSize {
 		return
 	}
-	sig := bs[:ed25519.SignatureSize]
+	//sig := bs[:ed25519.SignatureSize]
 	msg = bs[ed25519.SignatureSize:]
-	sigBytes := make([]byte, 0, 65535)
-	sigBytes = append(sigBytes, pc.public...)
-	sigBytes = append(sigBytes, msg...)
-	ok = ed25519.Verify(fromKey, sigBytes, sig)
+	//sigBytes := make([]byte, 0, 65535)
+	//sigBytes = append(sigBytes, pc.public...)
+	//sigBytes = append(sigBytes, msg...)
+	//ok = ed25519.Verify(fromKey, sigBytes, sig)
 	ok = true
 	return
 }
