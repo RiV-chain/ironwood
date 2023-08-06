@@ -9,6 +9,7 @@ import (
 	"golang.org/x/crypto/nacl/box"
 
 	"github.com/Arceliar/ironwood/encrypted/internal/e2c"
+	"github.com/Arceliar/ironwood/types"
 )
 
 /********
@@ -53,13 +54,13 @@ func edCheck(msg []byte, sig *edSig, pub *edPub) bool {
 	return ed25519.Verify(pub[:], msg, sig[:])
 }
 
-func (pub *edPub) asKey() ed25519.PublicKey {
-	return ed25519.PublicKey(pub[:])
+func (pub *edPub) asDomain() types.Domain {
+	return types.Domain(pub[:])
 }
 
 func (pub *edPub) toBox() (*boxPub, error) {
 	var c boxPub
-	e := e2c.Ed25519PublicKeyToCurve25519(pub.asKey())
+	e := e2c.Ed25519PublicKeyToCurve25519(ed25519.PublicKey(pub[:]))
 	copy(c[:], e)
 	return &c, nil
 }

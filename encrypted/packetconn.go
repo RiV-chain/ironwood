@@ -43,7 +43,7 @@ func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
 		err = info.err
 		return
 	}
-	n, from = len(info.data), types.Addr(info.from.asKey())
+	n, from = len(info.data), types.Addr(info.from.asDomain())
 	if n > len(p) {
 		n = len(p)
 	}

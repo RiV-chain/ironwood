@@ -181,13 +181,13 @@ func (mgr *sessionManager) _bufferAndInit(toKey edPub, msg []byte) {
 
 func (mgr *sessionManager) sendInit(dest *edPub, init *sessionInit) {
 	if bs, err := init.encrypt(&mgr.pc.secretEd, dest); err == nil {
-		mgr.pc.PacketConn.WriteTo(bs, types.Addr(dest.asKey()))
+		mgr.pc.PacketConn.WriteTo(bs, types.Addr(dest.asDomain()))
 	}
 }
 
 func (mgr *sessionManager) sendAck(dest *edPub, ack *sessionAck) {
 	if bs, err := ack.encrypt(&mgr.pc.secretEd, dest); err == nil {
-		mgr.pc.PacketConn.WriteTo(bs, types.Addr(dest.asKey()))
+		mgr.pc.PacketConn.WriteTo(bs, types.Addr(dest.asDomain()))
 	}
 }
 
