@@ -28,9 +28,9 @@ type PacketConn struct {
 }
 
 // NewPacketConn returns a *PacketConn struct which implements the types.PacketConn interface.
-func NewPacketConn(secret ed25519.PrivateKey) (*PacketConn, error) {
+func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain) (*PacketConn, error) {
 	c := new(core)
-	if err := c.init(secret); err != nil {
+	if err := c.init(secret, domain); err != nil {
 		return nil, err
 	}
 	return &c.pconn, nil
@@ -100,7 +100,7 @@ func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		return 0, errors.New("oversized message")
 	}
 	tr := getDHTTraffic()
-	tr.source = pc.core.crypto.publicKey
+	tr.source = pc.core.crypto.publicDomain
 	copy(tr.dest[:], dest)
 	tr.kind = wireTrafficStandard
 	tr.payload = append(tr.payload[:0], p...)
@@ -136,9 +136,9 @@ func (pc *PacketConn) Close() error {
 	return nil
 }
 
-// LocalAddr returns a types.Addr of the ed25519.PublicKey for this PacketConn.
+// LocalAddr returns a types.Addr of the domain for this PacketConn.
 func (pc *PacketConn) LocalAddr() net.Addr {
-	return pc.core.crypto.publicKey.addr()
+	return pc.core.crypto.publicDomain.addr()
 }
 
 // SetDeadline fulfills the net.PacketConn interface. Note that only read deadlines are affected.
@@ -173,7 +173,7 @@ func (pc *PacketConn) HandleConn(domain types.Domain, conn net.Conn, prio uint8)
 	}
 	var pk publicDomain
 	copy(pk[:], domain)
-	if pc.core.crypto.publicKey.equal(pk) {
+	if pc.core.crypto.publicDomain.equal(pk) {
 		return errors.New("attempted to connect to self")
 	}
 	p, err := pc.core.peers.addPeer(pk, conn, prio)
@@ -200,7 +200,7 @@ func (pc *PacketConn) SendOutOfBand(toDomain types.Domain, data []byte) error {
 		return errors.New("incorrect address length")
 	}
 	var tr dhtTraffic
-	tr.source = pc.core.crypto.publicKey
+	tr.source = pc.core.crypto.publicDomain
 	copy(tr.dest[:], toDomain)
 	tr.kind = wireTrafficOutOfBand
 	tr.payload = append(tr.payload, data...)
@@ -264,7 +264,7 @@ func (pc *PacketConn) handleTraffic(tr *dhtTraffic) {
 			// Drop the traffic
 			dhtTrafficPool.Put(tr)
 		case wireTrafficStandard:
-			if tr.dest.equal(pc.core.crypto.publicKey) {
+			if tr.dest.equal(pc.core.crypto.publicDomain) {
 				select {
 				case pc.recv <- tr:
 				case <-pc.closed:

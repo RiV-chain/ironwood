@@ -46,7 +46,7 @@ type DebugPathInfo struct {
 
 func (d *Debug) GetSelf() (info DebugSelfInfo) {
 	phony.Block(&d.c.dhtree, func() {
-		info.Domain = append(info.Domain, d.c.crypto.publicKey[:]...)
+		info.Domain = append(info.Domain, d.c.crypto.publicDomain[:]...)
 		info.Root = append(info.Root, d.c.dhtree.self.root[:]...)
 		info.Coords = make([]uint64, 0)
 		for _, hop := range d.c.dhtree.self.hops {

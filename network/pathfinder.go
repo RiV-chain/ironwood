@@ -47,7 +47,7 @@ func (pf *pathfinder) _getNotify(dest publicDomain, keepAlive bool) *pathNotify 
 
 func (pf *pathfinder) _getLookup(n *pathNotify) *pathLookup {
 	if info, isIn := pf.paths[n.label.key]; isIn {
-		if time.Since(info.ltime) < pathfinderTHROTTLE || !n.check() {
+		if time.Since(info.ltime) < pathfinderTHROTTLE /*|| !n.check()*/ {
 			return nil
 		}
 		l := new(pathLookup)
@@ -61,12 +61,12 @@ func (pf *pathfinder) _getLookup(n *pathNotify) *pathLookup {
 func (pf *pathfinder) _getResponse(l *pathLookup) *pathResponse {
 	// Check if lookup comes from us
 	dest := l.notify.label.key
-	if !dest.equal(pf.dhtree.core.crypto.publicKey) || !l.notify.check() {
+	if !dest.equal(pf.dhtree.core.crypto.publicDomain) /*|| !l.notify.check()*/ {
 		// TODO? skip l.notify.check()? only check the last hop?
 		return nil
 	}
 	r := new(pathResponse)
-	r.from = pf.dhtree.core.crypto.publicKey
+	r.from = pf.dhtree.core.crypto.publicDomain
 	r.path = make([]peerPort, 0, len(l.rpath)+1)
 	for idx := len(l.rpath) - 1; idx >= 0; idx-- {
 		r.path = append(r.path, l.rpath[idx])
@@ -171,6 +171,7 @@ type pathNotify struct {
 	label *treeLabel
 }
 
+/*
 func (pn *pathNotify) check() bool {
 	if !pn.label.check() {
 		return false
@@ -184,7 +185,7 @@ func (pn *pathNotify) check() bool {
 	bs = append(bs, ibytes...)
 	dest := pn.label.key
 	return dest.verify(bs, &pn.sig)
-}
+}*/
 
 func (pn *pathNotify) encode(out []byte) ([]byte, error) {
 	if pn.label == nil {

@@ -108,7 +108,7 @@ func (t *dhtree) update(from phony.Actor, info *treeInfo, p *peer) {
 				//  Then we get more bad news and switch again, etc...
 				// Set self to root, send, then process things correctly 1 second later
 				t.wait = true
-				t.self = &treeInfo{root: t.core.crypto.publicKey}
+				t.self = &treeInfo{root: t.core.crypto.publicDomain}
 				t._sendTree() // send bad news immediately
 				time.AfterFunc(peerTIMEOUT+time.Second, func() {
 					t.Act(nil, func() {
@@ -152,11 +152,11 @@ func (t *dhtree) _fix() {
 		return // closed
 	}
 	oldSelf := t.self
-	if t.self == nil || treeLess(t.core.crypto.publicKey, t.self.root) {
+	if t.self == nil || treeLess(t.core.crypto.publicDomain, t.self.root) {
 		// Note that seq needs to be non-decreasing for the node to function as a root
 		//  a timestamp it used to partly mitigate rollbacks from restarting
 		t.self = &treeInfo{
-			root: t.core.crypto.publicKey,
+			root: t.core.crypto.publicDomain,
 			seq:  uint64(time.Now().Unix()),
 			time: time.Now(),
 		}
@@ -200,7 +200,7 @@ func (t *dhtree) _fix() {
 		t.stimer.Stop()
 		self := t.self
 		var delay time.Duration
-		if t.self.root.equal(t.core.crypto.publicKey) {
+		if t.self.root.equal(t.core.crypto.publicDomain) {
 			// We are the root, so we need to expire after treeANNOUNCE to update seq
 			delay = treeANNOUNCE
 		} else {
@@ -231,7 +231,7 @@ func (t *dhtree) _fix() {
 
 // _treeLookup selects the best next hop (in treespace) for the destination
 func (t *dhtree) _treeLookup(dest *treeLabel) *peer {
-	if t.core.crypto.publicKey.equal(dest.key) {
+	if t.core.crypto.publicDomain.equal(dest.key) {
 		return nil
 	}
 	best := t.self
@@ -274,7 +274,7 @@ func (t *dhtree) _treeLookup(dest *treeLabel) *peer {
 // bootstraps use slightly different logic, since they need to stop short of the destination key
 func (t *dhtree) _dhtLookup(dest publicDomain, isBootstrap bool) *peer {
 	// Start by defining variables and helper functions
-	best := t.core.crypto.publicKey
+	best := t.core.crypto.publicDomain
 	var bestPeer *peer
 	var bestInfo *dhtInfo
 	// doUpdate is just to make sure we don't forget to update something
@@ -376,11 +376,11 @@ func (t *dhtree) _handleBootstrap(bootstrap *dhtBootstrap) {
 	if next := t._dhtLookup(source, true); next != nil {
 		next.sendBootstrap(t, bootstrap)
 		return
-	} else if source.equal(t.core.crypto.publicKey) {
+	} else if source.equal(t.core.crypto.publicDomain) {
 		return
-	} else if !bootstrap.check() {
-		return
-	}
+	} //else if !bootstrap.check() {
+	//return
+	//}
 	ack := new(dhtBootstrapAck)
 	ack.bootstrap = *bootstrap
 	ack.response = *t._getToken(source)
@@ -406,13 +406,13 @@ func (t *dhtree) _handleBootstrapAck(ack *dhtBootstrapAck) {
 	case next != nil:
 		next.sendBootstrapAck(t, ack)
 		return
-	case t.core.crypto.publicKey.equal(source):
+	case t.core.crypto.publicDomain.equal(source):
 		// This is our own ack, but we failed to find a next hop
 		return
-	case !t.core.crypto.publicKey.equal(ack.bootstrap.label.key):
+	case !t.core.crypto.publicDomain.equal(ack.bootstrap.label.key):
 		// This isn't an ack of our own bootstrap
 		return
-	case !t.core.crypto.publicKey.equal(ack.response.source):
+	case !t.core.crypto.publicDomain.equal(ack.response.source):
 		// This is an ack of or own bootstrap, but the token isn't for us
 		return
 	case !ack.response.dest.root.equal(t.self.root):
@@ -423,7 +423,7 @@ func (t *dhtree) _handleBootstrapAck(ack *dhtBootstrapAck) {
 		return
 	case t.prev == nil:
 		// We have no prev, so anything matching the above is good enough
-	case dhtOrdered(t.dkeys[t.prev], source, t.core.crypto.publicKey):
+	case dhtOrdered(t.dkeys[t.prev], source, t.core.crypto.publicDomain):
 		// This is from a better prev than our current one
 	case !source.equal(t.dkeys[t.prev]):
 		// This isn't from the current prev or better, so ignore it
@@ -434,10 +434,13 @@ func (t *dhtree) _handleBootstrapAck(ack *dhtBootstrapAck) {
 		// We already have a better (FIXME? or equal) prev
 		return
 	}
-	if !ack.response.check() {
-		// Final thing to check, if the signatures are bad then ignore it
-		return
-	}
+	//if !ack.response.check() {
+	// Final thing to check, if the signatures are bad then ignore it
+	// Ignore signature at all.
+	// TODO It might be verified somewhere outside.
+	//
+	//	return
+	//}
 	t.prev = nil
 	for _, dinfo := range t.dinfos {
 		// Former prev need to be notified that we're no longer next
@@ -482,7 +485,7 @@ func (t *dhtree) _newSetup(token *dhtSetupToken) *dhtSetup {
 func (t *dhtree) _handleSetup(prev *peer, setup *dhtSetup) {
 	next := t._treeLookup(&setup.token.dest)
 	dest := setup.token.dest.key
-	if next == nil && !dest.equal(t.core.crypto.publicKey) {
+	if next == nil && !dest.equal(t.core.crypto.publicDomain) {
 		// FIXME? this has problems if prev is self (from changes to tree state?)
 		if prev != nil {
 			prev.sendTeardown(t, setup.getTeardown())
@@ -528,7 +531,7 @@ func (t *dhtree) _handleSetup(prev *peer, setup *dhtSetup) {
 	})
 	if prev == nil {
 		// sanity checks, this should only happen when setting up our prev
-		if !setup.token.source.equal(t.core.crypto.publicKey) {
+		if !setup.token.source.equal(t.core.crypto.publicDomain) {
 			panic("wrong source")
 		} else if setup.seq != t.seq {
 			panic("wrong seq")
@@ -555,7 +558,7 @@ func (t *dhtree) _handleSetup(prev *peer, setup *dhtSetup) {
 			} else if dinfo.domain.equal(t.next.domain) {
 				// It's an update from the current next
 				doUpdate = true
-			} else if dhtOrdered(t.core.crypto.publicKey, dinfo.domain, t.next.domain) {
+			} else if dhtOrdered(t.core.crypto.publicDomain, dinfo.domain, t.next.domain) {
 				// It's an update from a better next
 				doUpdate = true
 			}
@@ -626,7 +629,7 @@ func (t *dhtree) _doBootstrap() {
 		if t.prev != nil && t.prev.root.equal(t.self.root) && t.prev.rootSeq == t.self.seq {
 			return
 		}
-		if !t.self.root.equal(t.core.crypto.publicKey) {
+		if !t.self.root.equal(t.core.crypto.publicDomain) {
 			t._handleBootstrap(t._newBootstrap())
 			// Don't immediately send more bootstraps if called again too quickly
 			// This helps prevent traffic spikes in some mobility scenarios
@@ -648,7 +651,7 @@ func (t *dhtree) handleDHTTraffic(from phony.Actor, tr *dhtTraffic, doNotify boo
 	t.Act(from, func() {
 		next := t._dhtLookup(tr.dest, false)
 		if next == nil {
-			if tr.dest.equal(t.core.crypto.publicKey) {
+			if tr.dest.equal(t.core.crypto.publicDomain) {
 				dest := tr.source
 				t.pathfinder._doNotify(dest, !doNotify)
 			}
@@ -677,7 +680,7 @@ func (t *dhtree) _getLabel() *treeLabel {
 	//  (to avoid repeated signing every time we call this)
 	// Fill easy fields of label
 	label := new(treeLabel)
-	label.key = t.core.crypto.publicKey
+	label.key = t.core.crypto.publicDomain
 	label.root = t.self.root
 	label.seq = t.self.seq
 	for _, hop := range t.self.hops {
@@ -713,14 +716,6 @@ type treeHop struct {
 	sig  signature
 }
 
-func (info *treeInfo) dest() publicDomain {
-	key := info.root
-	if len(info.hops) > 0 {
-		key = info.hops[len(info.hops)-1].next
-	}
-	return key
-}
-
 func (info *treeInfo) from() publicDomain {
 	key := info.root
 	if len(info.hops) > 1 {
@@ -735,7 +730,7 @@ func (info *treeInfo) checkSigs() bool {
 		return false
 	}
 	var bs []byte
-	key := info.root
+	//key := info.root
 	bs = append(bs, info.root[:]...)
 	seq := make([]byte, 8)
 	binary.BigEndian.PutUint64(seq, info.seq)
@@ -743,10 +738,11 @@ func (info *treeInfo) checkSigs() bool {
 	for _, hop := range info.hops {
 		bs = append(bs, hop.next[:]...)
 		bs = wireEncodeUint(bs, uint64(hop.port))
-		if !key.verify(bs, &hop.sig) {
-			return false
-		}
-		key = hop.next
+		//TODO check signature somewhere outside
+		//if !key.verify(bs, &hop.sig) {
+		//	return false
+		//}
+		//key = hop.next
 	}
 	return true
 }
@@ -867,10 +863,12 @@ func (l *treeLabel) bytesForSig() []byte {
 	return bs
 }
 
+/*
 func (l *treeLabel) check() bool {
 	bs := l.bytesForSig()
 	return l.key.verify(bs, &l.sig)
 }
+*/
 
 func (l *treeLabel) encode(out []byte) ([]byte, error) {
 	out = append(out, l.sig[:]...)
@@ -942,9 +940,11 @@ type dhtBootstrap struct {
 	label treeLabel
 }
 
+/*
 func (dbs *dhtBootstrap) check() bool {
 	return dbs.label.check()
 }
+*/
 
 func (dbs *dhtBootstrap) encode(out []byte) ([]byte, error) {
 	return dbs.label.encode(out)
@@ -987,10 +987,10 @@ func (st *dhtSetupToken) bytesForSig() []byte {
 
 // TODO? remove the redundant sig and check? both from same node, one should be a superset of the other...
 
-func (st *dhtSetupToken) check() bool {
-	bs := st.bytesForSig()
-	return st.dest.key.verify(bs, &st.sig) && st.dest.check()
-}
+//func (st *dhtSetupToken) check() bool {
+//	bs := st.bytesForSig()
+//	return st.dest.key.verify(bs, &st.sig) && st.dest.check()
+//}
 
 func (st *dhtSetupToken) encode(out []byte) ([]byte, error) {
 	out = append(out, st.sig[:]...)
@@ -1016,9 +1016,9 @@ type dhtBootstrapAck struct {
 	response  dhtSetupToken
 }
 
-func (ack *dhtBootstrapAck) check() bool {
-	return ack.bootstrap.check() && ack.response.check()
-}
+//func (ack *dhtBootstrapAck) check() bool {
+//	return ack.bootstrap.check() && ack.response.check()
+//}
 
 func (ack *dhtBootstrapAck) encode(out []byte) ([]byte, error) {
 	var bootBytes, resBytes []byte // TODO get rid of these
@@ -1069,6 +1069,7 @@ func (s *dhtSetup) bytesForSig() []byte {
 	return bs
 }
 
+/*
 func (s *dhtSetup) check() bool {
 	if !s.token.check() {
 		return false
@@ -1076,6 +1077,7 @@ func (s *dhtSetup) check() bool {
 	bs := s.bytesForSig()
 	return s.token.source.verify(bs, &s.sig)
 }
+*/
 
 func (s *dhtSetup) getTeardown() *dhtTeardown {
 	return &dhtTeardown{

@@ -17,11 +17,11 @@ import (
 func TestTwoNodes(t *testing.T) {
 	pubA, privA, _ := ed25519.GenerateKey(nil)
 	pubB, privB, _ := ed25519.GenerateKey(nil)
-	domA := []byte(pubA)
-	domB := []byte(pubB)
-	a, _ := NewPacketConn(privA)
-	b, _ := NewPacketConn(privB)
-	cA, cB := newDummyConn(domA, domB)
+	domA := types.Domain("example1")
+	domB := types.Domain("example1")
+	a, _ := NewPacketConn(privA, types.Domain("example1"))
+	b, _ := NewPacketConn(privB, types.Domain("example2"))
+	cA, cB := newDummyConn(pubA, pubB)
 	defer cA.Close()
 	defer cB.Close()
 	go a.HandleConn(domB, cA, 0)
@@ -103,7 +103,7 @@ func TestLineNetwork(t *testing.T) {
 	var conns []*PacketConn
 	for idx := 0; idx < 8; idx++ {
 		_, priv, _ := ed25519.GenerateKey(nil)
-		conn, err := NewPacketConn(priv)
+		conn, err := NewPacketConn(priv, types.Domain("example"))
 		if err != nil {
 			panic(err)
 		}
@@ -226,7 +226,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 	wait := make(chan struct{})
 	for idx := 0; idx < 32; idx++ {
 		_, priv, _ := ed25519.GenerateKey(nil)
-		conn, err := NewPacketConn(priv)
+		conn, err := NewPacketConn(priv, types.Domain("example"))
 		if err != nil {
 			panic(err)
 		}

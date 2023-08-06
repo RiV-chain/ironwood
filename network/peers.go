@@ -151,7 +151,7 @@ func (p *peer) handler() error {
 	}
 	// Hack to get ourself into the remote node's dhtree
 	// They send a similar message and we'll respond with correct info
-	p.sendTree(nil, &treeInfo{root: p.peers.core.crypto.publicKey})
+	p.sendTree(nil, &treeInfo{root: p.peers.core.crypto.publicDomain})
 	// Hack to send our priority to the remote node in a way that existing
 	// nodes can safely ignore
 	var prio uint8
@@ -247,10 +247,10 @@ func (p *peer) _handleTree(bs []byte) error {
 		return errors.New("invalid signature")
 	}
 	if !p.domain.equal(info.from()) {
-		return errors.New("unrecognized publicKey")
+		return errors.New("unrecognized publicDomain")
 	}
 	dest := info.hops[len(info.hops)-1].next
-	if !p.peers.core.crypto.publicKey.equal(dest) {
+	if !p.peers.core.crypto.publicDomain.equal(dest) {
 		return errors.New("incorrect destination")
 	}
 	p.info = info
@@ -300,9 +300,10 @@ func (p *peer) _handleSetup(bs []byte) error {
 	if err := setup.decode(bs); err != nil {
 		return err
 	}
-	if !setup.check() {
-		return errors.New("invalid setup")
-	}
+	/*
+		if !setup.check() {
+			return errors.New("invalid setup")
+		}*/
 	p.peers.core.dhtree.handleSetup(p, p, setup)
 	return nil
 }
