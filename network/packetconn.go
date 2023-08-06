@@ -20,7 +20,7 @@ type PacketConn struct {
 	actor        phony.Inbox
 	core         *core
 	recv         chan *dhtTraffic //read buffer
-	oobHandler   func([]byte, []byte, []byte)
+	oobHandler   func(types.Domain, types.Domain, []byte)
 	readDeadline *deadline
 	closeMutex   sync.Mutex
 	closed       chan struct{}
@@ -162,17 +162,17 @@ func (pc *PacketConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-// HandleConn expects a peer's public key as its first argument, and a net.Conn with TCP-like semantics (reliable ordered delivery) as its second argument.
+// HandleConn expects a peer's public domain as its first argument, and a net.Conn with TCP-like semantics (reliable ordered delivery) as its second argument.
 // This function blocks while the net.Conn is in use, and returns an error if any occurs.
 // This function returns (almost) immediately if PacketConn.Close() is called.
 // In all cases, the net.Conn is closed before returning.
-func (pc *PacketConn) HandleConn(key []byte, conn net.Conn, prio uint8) error {
+func (pc *PacketConn) HandleConn(domain types.Domain, conn net.Conn, prio uint8) error {
 	defer conn.Close()
-	if len(key) != publicKeySize {
+	if len(domain) != publicKeySize {
 		return errors.New("incorrect key length")
 	}
 	var pk publicKey
-	copy(pk[:], key)
+	copy(pk[:], domain)
 	if pc.core.crypto.publicKey.equal(pk) {
 		return errors.New("attempted to connect to self")
 	}
@@ -187,21 +187,21 @@ func (pc *PacketConn) HandleConn(key []byte, conn net.Conn, prio uint8) error {
 	return err
 }
 
-// SendOutOfBand sends some out-of-band data to a key.
-// The data will be forwarded towards the destination key as far as possible, and then handled by the out-of-band handler of the terminal node.
-// This could be used to do e.g. key discovery based on an incomplete key, or to implement application-specific helpers for debugging and analytics.
-func (pc *PacketConn) SendOutOfBand(toKey []byte, data []byte) error {
+// SendOutOfBand sends some out-of-band data to a domain.
+// The data will be forwarded towards the destination domain as far as possible, and then handled by the out-of-band handler of the terminal node.
+// This could be used to do e.g. domain discovery based on an incomplete domain, or to implement application-specific helpers for debugging and analytics.
+func (pc *PacketConn) SendOutOfBand(toDomain types.Domain, data []byte) error {
 	select {
 	case <-pc.closed:
 		return errors.New("closed")
 	default:
 	}
-	if len(toKey) != publicKeySize {
+	if len(toDomain) != publicKeySize {
 		return errors.New("incorrect address length")
 	}
 	var tr dhtTraffic
 	tr.source = pc.core.crypto.publicKey
-	copy(tr.dest[:], toKey)
+	copy(tr.dest[:], toDomain)
 	tr.kind = wireTrafficOutOfBand
 	tr.payload = append(tr.payload, data...)
 	pc.core.dhtree.sendTraffic(nil, &tr)
@@ -211,7 +211,7 @@ func (pc *PacketConn) SendOutOfBand(toKey []byte, data []byte) error {
 // SetOutOfBandHandler sets a function to handle out-of-band data.
 // This function will be called every time out-of-band data is received.
 // If no handler has been set, then any received out-of-band data is dropped.
-func (pc *PacketConn) SetOutOfBandHandler(handler func(fromKey, toKey []byte, data []byte)) error {
+func (pc *PacketConn) SetOutOfBandHandler(handler func(fromKey, toKey types.Domain, data []byte)) error {
 	var err error
 	phony.Block(&pc.actor, func() {
 		select {
