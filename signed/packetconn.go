@@ -46,7 +46,7 @@ func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	default:
 		return 0, errors.New("wrong address type")
 	}
-	toKey := ed25519.PublicKey(addr.(types.Addr))
+	toKey := types.Domain(addr.(types.Addr))
 	msg := pc.sign(nil, toKey, p)
 	n, err = pc.PacketConn.WriteTo(msg, addr)
 	n -= len(msg) - len(p) // subtract overhead
@@ -56,7 +56,7 @@ func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	return
 }
 
-func (pc *PacketConn) sign(dest, toKey ed25519.PublicKey, msg []byte) []byte {
+func (pc *PacketConn) sign(dest, toKey types.Domain, msg []byte) []byte {
 	sigBytes := make([]byte, 0, 65535)
 	sigBytes = append(sigBytes, toKey...)
 	sigBytes = append(sigBytes, msg...)
