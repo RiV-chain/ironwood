@@ -17,13 +17,15 @@ import (
 func TestTwoNodes(t *testing.T) {
 	pubA, privA, _ := ed25519.GenerateKey(nil)
 	pubB, privB, _ := ed25519.GenerateKey(nil)
+	domA := []byte(pubA)
+	domB := []byte(pubB)
 	a, _ := NewPacketConn(privA)
 	b, _ := NewPacketConn(privB)
-	cA, cB := newDummyConn(pubA, pubB)
+	cA, cB := newDummyConn(domA, domB)
 	defer cA.Close()
 	defer cB.Close()
-	go a.HandleConn(pubB, cA, 0)
-	go b.HandleConn(pubA, cB, 0)
+	go a.HandleConn(domB, cA, 0)
+	go b.HandleConn(domA, cB, 0)
 	waitForRoot([]*PacketConn{a, b}, 10*time.Second)
 	timer := time.NewTimer(time.Second)
 	defer func() { timer.Stop() }()
@@ -116,17 +118,19 @@ func TestLineNetwork(t *testing.T) {
 		here := conns[idx]
 		keyA := ed25519.PublicKey(prev.LocalAddr().(types.Addr))
 		keyB := ed25519.PublicKey(here.LocalAddr().(types.Addr))
+		domA := []byte(keyA)
+		domB := []byte(keyB)
 		linkA, linkB := newDummyConn(keyA, keyB)
 		defer linkA.Close()
 		defer linkB.Close()
 		go func() {
 			<-wait
-			prev.HandleConn(keyB, linkA, 0)
+			prev.HandleConn(domB, linkA, 0)
 			//linkA.Close()
 		}()
 		go func() {
 			<-wait
-			here.HandleConn(keyA, linkB, 0)
+			here.HandleConn(domA, linkB, 0)
 			//linkB.Close()
 		}()
 	}
@@ -231,16 +235,18 @@ func TestRandomTreeNetwork(t *testing.T) {
 			p := conns[pIdx]
 			keyA := ed25519.PublicKey(conn.LocalAddr().(types.Addr))
 			keyB := ed25519.PublicKey(p.LocalAddr().(types.Addr))
+			domA := []byte(keyA)
+			domB := []byte(keyB)
 			linkA, linkB := newDummyConn(keyA, keyB)
 			defer linkA.Close()
 			defer linkB.Close()
 			go func() {
 				<-wait
-				conn.HandleConn(keyB, linkA, 0)
+				conn.HandleConn(domB, linkA, 0)
 			}()
 			go func() {
 				<-wait
-				p.HandleConn(keyA, linkB, 0)
+				p.HandleConn(domA, linkB, 0)
 			}()
 		}
 		conns = append(conns, conn)
