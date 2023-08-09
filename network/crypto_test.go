@@ -3,12 +3,14 @@ package network
 import (
 	"crypto/ed25519"
 	"testing"
+
+	"github.com/Arceliar/ironwood/types"
 )
 
 func TestSign(t *testing.T) {
 	var c crypto
 	_, priv, _ := ed25519.GenerateKey(nil)
-	c.init(priv)
+	c.init(priv, types.Domain(nil))
 	msg := []byte("this is a test")
 	_ = c.privateKey.sign(msg)
 }
@@ -16,7 +18,7 @@ func TestSign(t *testing.T) {
 func TestVerify(t *testing.T) {
 	var c crypto
 	_, priv, _ := ed25519.GenerateKey(nil)
-	c.init(priv)
+	c.init(priv, types.Domain(nil))
 	msg := []byte("this is a test")
 	sig := c.privateKey.sign(msg)
 	if !c.publicKey.verify(msg, &sig) {
@@ -27,7 +29,7 @@ func TestVerify(t *testing.T) {
 func BenchmarkSign(b *testing.B) {
 	var c crypto
 	_, priv, _ := ed25519.GenerateKey(nil)
-	c.init(priv)
+	c.init(priv, types.Domain(nil))
 	msg := []byte("this is a test")
 	for idx := 0; idx < b.N; idx++ {
 		_ = c.privateKey.sign(msg)
@@ -37,7 +39,7 @@ func BenchmarkSign(b *testing.B) {
 func BenchmarkVerify(b *testing.B) {
 	var c crypto
 	_, priv, _ := ed25519.GenerateKey(nil)
-	c.init(priv)
+	c.init(priv, types.Domain(nil))
 	msg := []byte("this is a test")
 	sig := c.privateKey.sign(msg)
 	for idx := 0; idx < b.N; idx++ {

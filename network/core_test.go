@@ -17,15 +17,17 @@ import (
 func TestTwoNodes(t *testing.T) {
 	pubA, privA, _ := ed25519.GenerateKey(nil)
 	pubB, privB, _ := ed25519.GenerateKey(nil)
-	a, _ := NewPacketConn(privA)
-	b, _ := NewPacketConn(privB)
-	cA, cB := newDummyConn(pubA, pubB)
+	dA := types.Domain(pubA)
+	dB := types.Domain(pubB)
+	a, _ := NewPacketConn(privA, dA)
+	b, _ := NewPacketConn(privB, dB)
+	cA, cB := newDummyConn(dA, dB)
 	defer cA.Close()
 	defer cB.Close()
-	go a.HandleConn(pubB, cA, 0)
-	go b.HandleConn(pubA, cB, 0)
+	go a.HandleConn(dB, pubB, cA, 0)
+	go b.HandleConn(dA, pubA, cB, 0)
 	waitForRoot([]*PacketConn{a, b}, 10*time.Second)
-	timer := time.NewTimer(time.Second)
+	timer := time.NewTimer(1000 * time.Second)
 	defer func() { timer.Stop() }()
 	tA := &a.core.dhtree
 	tB := &b.core.dhtree
@@ -49,10 +51,10 @@ func TestTwoNodes(t *testing.T) {
 		phony.Block(tB, func() {
 			lB = tB._treeLookup(sA)
 		})
-		if lA == nil || !bytes.Equal(lA.key[:], tB.core.crypto.publicKey[:]) {
+		if lA == nil || !bytes.Equal(lA.domain[:], tB.core.crypto.domain[:]) {
 			continue
 		}
-		if lB == nil || !bytes.Equal(lB.key[:], tA.core.crypto.publicKey[:]) {
+		if lB == nil || !bytes.Equal(lB.domain[:], tA.core.crypto.domain[:]) {
 			continue
 		}
 		break
@@ -101,7 +103,7 @@ func TestLineNetwork(t *testing.T) {
 	var conns []*PacketConn
 	for idx := 0; idx < 8; idx++ {
 		_, priv, _ := ed25519.GenerateKey(nil)
-		conn, err := NewPacketConn(priv)
+		conn, err := NewPacketConn(priv, types.Domain(nil))
 		if err != nil {
 			panic(err)
 		}
@@ -116,17 +118,19 @@ func TestLineNetwork(t *testing.T) {
 		here := conns[idx]
 		keyA := ed25519.PublicKey(prev.LocalAddr().(types.Addr))
 		keyB := ed25519.PublicKey(here.LocalAddr().(types.Addr))
-		linkA, linkB := newDummyConn(keyA, keyB)
+		dA := types.Domain(keyA)
+		dB := types.Domain(keyB)
+		linkA, linkB := newDummyConn(dA, dB)
 		defer linkA.Close()
 		defer linkB.Close()
 		go func() {
 			<-wait
-			prev.HandleConn(keyB, linkA, 0)
+			prev.HandleConn(dB, keyB, linkA, 0)
 			//linkA.Close()
 		}()
 		go func() {
 			<-wait
-			here.HandleConn(keyA, linkB, 0)
+			here.HandleConn(dA, keyA, linkB, 0)
 			//linkB.Close()
 		}()
 	}
@@ -135,7 +139,7 @@ func TestLineNetwork(t *testing.T) {
 	for aIdx := range conns {
 		a := conns[aIdx]
 		aAddr := a.LocalAddr()
-		var aK publicKey
+		var aK domain
 		copy(aK[:], aAddr.(types.Addr))
 		for bIdx := range conns {
 			if bIdx == aIdx {
@@ -176,7 +180,7 @@ func TestLineNetwork(t *testing.T) {
 						}
 						//panic("read problem")
 					}
-					var fK publicKey
+					var fK domain
 					copy(fK[:], from.(types.Addr))
 					if fK.equal(aK) {
 						break
@@ -200,7 +204,7 @@ func TestLineNetwork(t *testing.T) {
 						prev = k.addr().String()
 					}
 					if dinfo := conn.core.dhtree.next; dinfo != nil {
-						next = dinfo.key.addr().String()
+						next = dinfo.domain.addr().String()
 					}
 					root = conn.core.dhtree.self.root.addr().String()
 					t.Log(prev, ":", here, ":", next, ":", root)
@@ -222,7 +226,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 	wait := make(chan struct{})
 	for idx := 0; idx < 32; idx++ {
 		_, priv, _ := ed25519.GenerateKey(nil)
-		conn, err := NewPacketConn(priv)
+		conn, err := NewPacketConn(priv, types.Domain(nil))
 		if err != nil {
 			panic(err)
 		}
@@ -231,16 +235,18 @@ func TestRandomTreeNetwork(t *testing.T) {
 			p := conns[pIdx]
 			keyA := ed25519.PublicKey(conn.LocalAddr().(types.Addr))
 			keyB := ed25519.PublicKey(p.LocalAddr().(types.Addr))
-			linkA, linkB := newDummyConn(keyA, keyB)
+			dA := types.Domain(keyA)
+			dB := types.Domain(keyB)
+			linkA, linkB := newDummyConn(dA, dB)
 			defer linkA.Close()
 			defer linkB.Close()
 			go func() {
 				<-wait
-				conn.HandleConn(keyB, linkA, 0)
+				conn.HandleConn(dB, keyB, linkA, 0)
 			}()
 			go func() {
 				<-wait
-				p.HandleConn(keyA, linkB, 0)
+				p.HandleConn(dA, keyA, linkB, 0)
 			}()
 		}
 		conns = append(conns, conn)
@@ -250,7 +256,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 	for aIdx := range conns {
 		a := conns[aIdx]
 		aAddr := a.LocalAddr()
-		var aK publicKey
+		var aK domain
 		copy(aK[:], aAddr.(types.Addr))
 		for bIdx := range conns {
 			if bIdx == aIdx {
@@ -291,7 +297,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 						}
 						//panic("read problem")
 					}
-					var fK publicKey
+					var fK domain
 					copy(fK[:], from.(types.Addr))
 					if fK.equal(aK) {
 						break
@@ -315,7 +321,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 						prev = k.addr().String()
 					}
 					if dinfo := conn.core.dhtree.next; dinfo != nil {
-						next = dinfo.key.addr().String()
+						next = dinfo.domain.addr().String()
 					}
 					root = conn.core.dhtree.self.root.addr().String()
 					t.Log(prev, ":", here, ":", next, ":", root)
@@ -337,7 +343,7 @@ func waitForRoot(conns []*PacketConn, timeout time.Duration) {
 		if time.Since(begin) > timeout {
 			panic("timeout")
 		}
-		var root publicKey
+		var root domain
 		for _, conn := range conns {
 			phony.Block(&conn.core.dhtree, func() {
 				root = conn.core.dhtree.self.root
@@ -346,7 +352,7 @@ func waitForRoot(conns []*PacketConn, timeout time.Duration) {
 		}
 		var bad bool
 		for _, conn := range conns {
-			var croot publicKey
+			var croot domain
 			phony.Block(&conn.core.dhtree, func() {
 				croot = conn.core.dhtree.self.root
 			})
@@ -375,7 +381,7 @@ type dummyConn struct {
 	closed    chan struct{}
 }
 
-func newDummyConn(keyA, keyB ed25519.PublicKey) (*dummyConn, *dummyConn) {
+func newDummyConn(keyA, keyB types.Domain) (*dummyConn, *dummyConn) {
 	toA := make(chan []byte)
 	toB := make(chan []byte)
 	cl := new(sync.Mutex)

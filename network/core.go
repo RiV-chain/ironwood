@@ -1,6 +1,10 @@
 package network
 
-import "crypto/ed25519"
+import (
+	"crypto/ed25519"
+
+	"github.com/Arceliar/ironwood/types"
+)
 
 type core struct {
 	crypto crypto     // crypto info, e.g. pubkeys and sign/verify wrapper functions
@@ -9,8 +13,8 @@ type core struct {
 	pconn  PacketConn // net.PacketConn-like interface
 }
 
-func (c *core) init(secret ed25519.PrivateKey) error {
-	c.crypto.init(secret)
+func (c *core) init(secret ed25519.PrivateKey, domain types.Domain) error {
+	c.crypto.init(secret, domain)
 	c.dhtree.init(c)
 	c.peers.init(c)
 	c.pconn.init(c)

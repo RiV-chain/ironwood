@@ -20,7 +20,7 @@ type PacketConn struct {
 	actor        phony.Inbox
 	core         *core
 	recv         chan *dhtTraffic //read buffer
-	oobHandler   func(ed25519.PublicKey, ed25519.PublicKey, []byte)
+	oobHandler   func(types.Domain, types.Domain, []byte)
 	readDeadline *deadline
 	closeMutex   sync.Mutex
 	closed       chan struct{}
@@ -28,9 +28,9 @@ type PacketConn struct {
 }
 
 // NewPacketConn returns a *PacketConn struct which implements the types.PacketConn interface.
-func NewPacketConn(secret ed25519.PrivateKey) (*PacketConn, error) {
+func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain) (*PacketConn, error) {
 	c := new(core)
-	if err := c.init(secret); err != nil {
+	if err := c.init(secret, domain); err != nil {
 		return nil, err
 	}
 	return &c.pconn, nil
@@ -55,8 +55,8 @@ var dhtTrafficPool = sync.Pool{
 func getDHTTraffic() *dhtTraffic {
 	d := dhtTrafficPool.Get().(*dhtTraffic)
 	d.kind = wireDummy
-	d.source = publicKey{}
-	d.dest = publicKey{}
+	d.source = domain{}
+	d.dest = domain{}
 	d.payload = d.payload[:0]
 	return d
 }
@@ -100,7 +100,7 @@ func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		return 0, errors.New("oversized message")
 	}
 	tr := getDHTTraffic()
-	tr.source = pc.core.crypto.publicKey
+	tr.source = pc.core.crypto.domain
 	copy(tr.dest[:], dest)
 	tr.kind = wireTrafficStandard
 	tr.payload = append(tr.payload[:0], p...)
@@ -138,7 +138,7 @@ func (pc *PacketConn) Close() error {
 
 // LocalAddr returns a types.Addr of the ed25519.PublicKey for this PacketConn.
 func (pc *PacketConn) LocalAddr() net.Addr {
-	return pc.core.crypto.publicKey.addr()
+	return pc.core.crypto.domain.addr()
 }
 
 // SetDeadline fulfills the net.PacketConn interface. Note that only read deadlines are affected.
@@ -162,21 +162,23 @@ func (pc *PacketConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-// HandleConn expects a peer's public key as its first argument, and a net.Conn with TCP-like semantics (reliable ordered delivery) as its second argument.
+// HandleConn expects a peer's public domain as its first argument, and a net.Conn with TCP-like semantics (reliable ordered delivery) as its second argument.
 // This function blocks while the net.Conn is in use, and returns an error if any occurs.
 // This function returns (almost) immediately if PacketConn.Close() is called.
 // In all cases, the net.Conn is closed before returning.
-func (pc *PacketConn) HandleConn(key ed25519.PublicKey, conn net.Conn, prio uint8) error {
+func (pc *PacketConn) HandleConn(d types.Domain, pk ed25519.PublicKey, conn net.Conn, prio uint8) error {
 	defer conn.Close()
-	if len(key) != publicKeySize {
+	if len(d) != publicKeySize {
 		return errors.New("incorrect key length")
 	}
-	var pk publicKey
-	copy(pk[:], key)
-	if pc.core.crypto.publicKey.equal(pk) {
+	var dom domain
+	copy(dom[:], d)
+	var pub publicKey
+	copy(pub[:], pk)
+	if pc.core.crypto.domain.equal(dom) {
 		return errors.New("attempted to connect to self")
 	}
-	p, err := pc.core.peers.addPeer(pk, conn, prio)
+	p, err := pc.core.peers.addPeer(dom, pub, conn, prio)
 	if err != nil {
 		return err
 	}
@@ -187,10 +189,10 @@ func (pc *PacketConn) HandleConn(key ed25519.PublicKey, conn net.Conn, prio uint
 	return err
 }
 
-// SendOutOfBand sends some out-of-band data to a key.
-// The data will be forwarded towards the destination key as far as possible, and then handled by the out-of-band handler of the terminal node.
-// This could be used to do e.g. key discovery based on an incomplete key, or to implement application-specific helpers for debugging and analytics.
-func (pc *PacketConn) SendOutOfBand(toKey ed25519.PublicKey, data []byte) error {
+// SendOutOfBand sends some out-of-band data to a Domain.
+// The data will be forwarded towards the destination Domain as far as possible, and then handled by the out-of-band handler of the terminal node.
+// This could be used to do e.g. Domain discovery based on an incomplete Domain, or to implement application-specific helpers for debugging and analytics.
+func (pc *PacketConn) SendOutOfBand(toKey types.Domain, data []byte) error {
 	select {
 	case <-pc.closed:
 		return errors.New("closed")
@@ -200,7 +202,7 @@ func (pc *PacketConn) SendOutOfBand(toKey ed25519.PublicKey, data []byte) error 
 		return errors.New("incorrect address length")
 	}
 	var tr dhtTraffic
-	tr.source = pc.core.crypto.publicKey
+	tr.source = pc.core.crypto.domain
 	copy(tr.dest[:], toKey)
 	tr.kind = wireTrafficOutOfBand
 	tr.payload = append(tr.payload, data...)
@@ -211,7 +213,7 @@ func (pc *PacketConn) SendOutOfBand(toKey ed25519.PublicKey, data []byte) error 
 // SetOutOfBandHandler sets a function to handle out-of-band data.
 // This function will be called every time out-of-band data is received.
 // If no handler has been set, then any received out-of-band data is dropped.
-func (pc *PacketConn) SetOutOfBandHandler(handler func(fromKey, toKey ed25519.PublicKey, data []byte)) error {
+func (pc *PacketConn) SetOutOfBandHandler(handler func(fromKey, toKey types.Domain, data []byte)) error {
 	var err error
 	phony.Block(&pc.actor, func() {
 		select {
@@ -264,7 +266,7 @@ func (pc *PacketConn) handleTraffic(tr *dhtTraffic) {
 			// Drop the traffic
 			dhtTrafficPool.Put(tr)
 		case wireTrafficStandard:
-			if tr.dest.equal(pc.core.crypto.publicKey) {
+			if tr.dest.equal(pc.core.crypto.domain) {
 				select {
 				case pc.recv <- tr:
 				case <-pc.closed:
@@ -275,8 +277,8 @@ func (pc *PacketConn) handleTraffic(tr *dhtTraffic) {
 			}
 		case wireTrafficOutOfBand:
 			if pc.oobHandler != nil {
-				source := append(ed25519.PublicKey(nil), tr.source[:]...)
-				dest := append(ed25519.PublicKey(nil), tr.dest[:]...)
+				source := append(types.Domain(nil), tr.source[:]...)
+				dest := append(types.Domain(nil), tr.dest[:]...)
 				msg := append([]byte(nil), tr.payload[:]...)
 				// TODO something smarter than spamming goroutines
 				go pc.oobHandler(source, dest, msg)

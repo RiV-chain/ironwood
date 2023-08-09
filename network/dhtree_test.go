@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"testing"
+
+	"github.com/Arceliar/ironwood/types"
 )
 
 func TestMarshalTreeInfo(t *testing.T) {
@@ -14,15 +16,18 @@ func TestMarshalTreeInfo(t *testing.T) {
 	var sk privateKey
 	copy(sk[:], priv)
 	info := new(treeInfo)
-	copy(info.root[:], pub)
+	copy(info.root[:], types.Domain(pub))
+	copy(info.rootPublicKey[:], pub)
 	for idx := 0; idx < 10; idx++ {
 		newPub, newPriv, err := ed25519.GenerateKey(nil)
 		if err != nil {
 			panic(err)
 		}
+		var domain domain
+		copy(domain[:], types.Domain(newPub))
 		var pk publicKey
 		copy(pk[:], newPub)
-		info = info.add(sk, &peer{key: pk})
+		info = info.add(sk, &peer{domain: domain, publicKey: pk})
 		if !info.checkSigs() {
 			t.Log(len(info.hops))
 			t.Log(info.hops[len(info.hops)-1].sig)
@@ -72,15 +77,18 @@ func TestMarshalDHTBootstrap(t *testing.T) {
 	var sk privateKey
 	copy(sk[:], priv)
 	info := new(treeInfo)
-	copy(info.root[:], pub)
+	copy(info.root[:], types.Domain(pub))
+	copy(info.rootPublicKey[:], pub)
 	for idx := 0; idx < 10; idx++ {
 		newPub, newPriv, err := ed25519.GenerateKey(nil)
 		if err != nil {
 			panic(err)
 		}
+		var d domain
+		copy(d[:], types.Domain(newPub))
 		var pk publicKey
 		copy(pk[:], newPub)
-		info = info.add(sk, &peer{key: pk, port: 1})
+		info = info.add(sk, &peer{domain: d, publicKey: pk, port: 1})
 		if !info.checkSigs() {
 			panic("checkSigs failed")
 		} else if !info.checkLoops() {
@@ -89,7 +97,7 @@ func TestMarshalDHTBootstrap(t *testing.T) {
 		copy(sk[:], newPriv)
 	}
 	c := new(core)
-	c.init(priv)
+	c.init(priv, types.Domain(nil))
 	c.dhtree.self = info
 	bootstrap := new(dhtBootstrap)
 	bootstrap.label = *c.dhtree._getLabel()
@@ -111,7 +119,7 @@ func TestMarshalDHTBootstrap(t *testing.T) {
 }
 
 func TestMarshalDHTSetup(t *testing.T) {
-	_, destPriv, err := ed25519.GenerateKey(nil)
+	destPub, destPriv, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -119,11 +127,17 @@ func TestMarshalDHTSetup(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	dpc, _ := NewPacketConn(destPriv)
-	spc, _ := NewPacketConn(sourcePriv)
+	var source domain
+	src := types.Domain(sourcePub)
+	copy(source[:], src)
+	var dest domain
+	destDomain := types.Domain(destPub)
+	copy(dest[:], destDomain)
+	dpc, _ := NewPacketConn(destPriv, destDomain)
+	spc, _ := NewPacketConn(sourcePriv, src)
 	var pk publicKey
 	copy(pk[:], sourcePub)
-	token := dpc.core.dhtree._getToken(pk)
+	token := dpc.core.dhtree._getToken(source, pk)
 	setup := spc.core.dhtree._newSetup(token)
 	if !setup.check() {
 		panic("initial check failed")

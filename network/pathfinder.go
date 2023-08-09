@@ -14,15 +14,15 @@ const (
 // WARNING The pathfinder should only be used from within the dhtree's actor, it's not threadsafe
 type pathfinder struct {
 	dhtree *dhtree
-	paths  map[publicKey]*pathInfo
+	paths  map[domain]*pathInfo
 }
 
 func (pf *pathfinder) init(t *dhtree) {
 	pf.dhtree = t
-	pf.paths = make(map[publicKey]*pathInfo)
+	pf.paths = make(map[domain]*pathInfo)
 }
 
-func (pf *pathfinder) _getNotify(dest publicKey, keepAlive bool) *pathNotify {
+func (pf *pathfinder) _getNotify(dest domain, keepAlive bool) *pathNotify {
 	throttle := pathfinderTHROTTLE
 	if keepAlive {
 		throttle = pathfinderTIMEOUT
@@ -46,7 +46,7 @@ func (pf *pathfinder) _getNotify(dest publicKey, keepAlive bool) *pathNotify {
 }
 
 func (pf *pathfinder) _getLookup(n *pathNotify) *pathLookup {
-	if info, isIn := pf.paths[n.label.key]; isIn {
+	if info, isIn := pf.paths[n.label.domain]; isIn {
 		if time.Since(info.ltime) < pathfinderTHROTTLE || !n.check() {
 			return nil
 		}
@@ -60,13 +60,13 @@ func (pf *pathfinder) _getLookup(n *pathNotify) *pathLookup {
 
 func (pf *pathfinder) _getResponse(l *pathLookup) *pathResponse {
 	// Check if lookup comes from us
-	dest := l.notify.label.key
-	if !dest.equal(pf.dhtree.core.crypto.publicKey) || !l.notify.check() {
+	dest := l.notify.label.domain
+	if !dest.equal(pf.dhtree.core.crypto.domain) || !l.notify.check() {
 		// TODO? skip l.notify.check()? only check the last hop?
 		return nil
 	}
 	r := new(pathResponse)
-	r.from = pf.dhtree.core.crypto.publicKey
+	r.from = pf.dhtree.core.crypto.domain
 	r.path = make([]peerPort, 0, len(l.rpath)+1)
 	for idx := len(l.rpath) - 1; idx >= 0; idx-- {
 		r.path = append(r.path, l.rpath[idx])
@@ -75,7 +75,7 @@ func (pf *pathfinder) _getResponse(l *pathLookup) *pathResponse {
 	return r
 }
 
-func (pf *pathfinder) _getPath(dest publicKey) []peerPort {
+func (pf *pathfinder) _getPath(dest domain) []peerPort {
 	var info *pathInfo
 	if nfo, isIn := pf.paths[dest]; isIn {
 		info = nfo
@@ -133,7 +133,7 @@ func (pf *pathfinder) handleResponse(from phony.Actor, r *pathResponse) {
 	})
 }
 
-func (pf *pathfinder) _doNotify(dest publicKey, keepAlive bool) {
+func (pf *pathfinder) _doNotify(dest domain, keepAlive bool) {
 	if n := pf._getNotify(dest, keepAlive); n != nil {
 		pf.handleNotify(nil, n) // TODO pf._handleNotify
 	}
@@ -167,7 +167,7 @@ type pathInfo struct {
 
 type pathNotify struct {
 	sig   signature // TODO? remove this? is it really useful for anything?...
-	dest  publicKey // Who to send the notify to
+	dest  domain    // Who to send the notify to
 	label *treeLabel
 }
 
@@ -182,7 +182,7 @@ func (pn *pathNotify) check() bool {
 	var bs []byte
 	bs = append(bs, pn.dest[:]...)
 	bs = append(bs, ibytes...)
-	dest := pn.label.key
+	dest := pn.label.publicKey
 	return dest.verify(bs, &pn.sig)
 }
 
@@ -265,7 +265,7 @@ func (l *pathLookup) decode(data []byte) error {
 
 type pathResponse struct {
 	// TODO? a sig or something? Since we can't sign the rpath, which is the part we care about...
-	from  publicKey
+	from  domain
 	path  []peerPort
 	rpath []peerPort
 }
