@@ -102,8 +102,9 @@ func TestTwoNodes(t *testing.T) {
 func TestLineNetwork(t *testing.T) {
 	var conns []*PacketConn
 	for idx := 0; idx < 8; idx++ {
-		_, priv, _ := ed25519.GenerateKey(nil)
-		conn, err := NewPacketConn(priv, types.Domain(nil))
+		pub, priv, _ := ed25519.GenerateKey(nil)
+		d := types.Domain(pub)
+		conn, err := NewPacketConn(priv, d)
 		if err != nil {
 			panic(err)
 		}
