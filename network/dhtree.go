@@ -685,8 +685,8 @@ func (t *dhtree) _getLabel() *treeLabel {
 	for _, hop := range t.self.hops {
 		label.path = append(label.path, hop.port)
 	}
-	label.sig = t.core.crypto.privateKey.sign(label.bytesForSig())
 	label.publicKey = t.core.crypto.publicKey
+	label.sig = t.core.crypto.privateKey.sign(label.bytesForSig())
 	return label
 }
 
@@ -694,8 +694,8 @@ func (t *dhtree) _getToken(source domain, publicKey publicKey) *dhtSetupToken {
 	token := new(dhtSetupToken)
 	token.source = source
 	token.dest = *t._getLabel()
-	token.sig = t.core.crypto.privateKey.sign(token.bytesForSig())
 	token.publicKey = publicKey
+	token.sig = t.core.crypto.privateKey.sign(token.bytesForSig())
 	return token
 }
 
@@ -819,9 +819,9 @@ func (info *treeInfo) encode(out []byte) ([]byte, error) {
 	out = append(out, seq...)
 	for _, hop := range info.hops {
 		out = append(out, hop.next[:]...)
+		out = append(out, hop.publicKey[:]...)
 		out = wireEncodeUint(out, uint64(hop.port))
 		out = append(out, hop.sig[:]...)
-		out = append(out, hop.publicKey[:]...)
 	}
 	return out, nil
 }
@@ -845,11 +845,11 @@ func (info *treeInfo) decode(data []byte) error {
 		switch {
 		case !wireChopSlice(hop.next[:], &data):
 			return wireDecodeError
+		case !wireChopSlice(hop.publicKey[:], &data):
+			return wireDecodeError
 		case !wireChopUint((*uint64)(&hop.port), &data):
 			return wireDecodeError
 		case !wireChopSlice(hop.sig[:], &data):
-			return wireDecodeError
-		case !wireChopSlice(hop.publicKey[:], &data):
 			return wireDecodeError
 		}
 		nfo.hops = append(nfo.hops, hop)
