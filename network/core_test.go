@@ -27,7 +27,7 @@ func TestTwoNodes(t *testing.T) {
 	go a.HandleConn(dB, pubB, cA, 0)
 	go b.HandleConn(dA, pubA, cB, 0)
 	waitForRoot([]*PacketConn{a, b}, 10*time.Second)
-	timer := time.NewTimer(1000 * time.Second)
+	timer := time.NewTimer(time.Second)
 	defer func() { timer.Stop() }()
 	tA := &a.core.dhtree
 	tB := &b.core.dhtree

@@ -156,9 +156,10 @@ func (t *dhtree) _fix() {
 		// Note that seq needs to be non-decreasing for the node to function as a root
 		//  a timestamp it used to partly mitigate rollbacks from restarting
 		t.self = &treeInfo{
-			root: t.core.crypto.domain,
-			seq:  uint64(time.Now().Unix()),
-			time: time.Now(),
+			root:          t.core.crypto.domain,
+			rootPublicKey: t.core.crypto.publicKey,
+			seq:           uint64(time.Now().Unix()),
+			time:          time.Now(),
 		}
 		t.parent = nil
 	}
