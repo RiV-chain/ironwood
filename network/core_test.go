@@ -226,8 +226,9 @@ func TestRandomTreeNetwork(t *testing.T) {
 	}
 	wait := make(chan struct{})
 	for idx := 0; idx < 32; idx++ {
-		_, priv, _ := ed25519.GenerateKey(nil)
-		conn, err := NewPacketConn(priv, types.Domain(nil))
+		pub, priv, _ := ed25519.GenerateKey(nil)
+		d := types.Domain(pub)
+		conn, err := NewPacketConn(priv, d)
 		if err != nil {
 			panic(err)
 		}
