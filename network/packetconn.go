@@ -20,7 +20,7 @@ type PacketConn struct {
 	actor        phony.Inbox
 	core         *core
 	recv         chan *dhtTraffic //read buffer
-	oobHandler   func(types.Domain, types.Domain, []byte)
+	oobHandler   func(ed25519.PublicKey, types.Domain, types.Domain, []byte)
 	readDeadline *deadline
 	closeMutex   sync.Mutex
 	closed       chan struct{}
@@ -216,7 +216,7 @@ func (pc *PacketConn) SendOutOfBand(toKey types.Domain, data []byte) error {
 // SetOutOfBandHandler sets a function to handle out-of-band data.
 // This function will be called every time out-of-band data is received.
 // If no handler has been set, then any received out-of-band data is dropped.
-func (pc *PacketConn) SetOutOfBandHandler(handler func(fromKey, toKey types.Domain, data []byte)) error {
+func (pc *PacketConn) SetOutOfBandHandler(handler func(fromKey ed25519.PublicKey, fromDomain, toDomain types.Domain, data []byte)) error {
 	var err error
 	phony.Block(&pc.actor, func() {
 		select {
@@ -280,12 +280,13 @@ func (pc *PacketConn) handleTraffic(tr *dhtTraffic) {
 			}
 		case wireTrafficOutOfBand:
 			if pc.oobHandler != nil {
+				sourceKey := append(ed25519.PublicKey(nil), tr.sourceKey[:]...)
 				source := append(types.Domain(nil), tr.source[:]...)
 				dest := append(types.Domain(nil), tr.dest[:]...)
 				msg := append([]byte(nil), tr.payload[:]...)
 				// TODO something smarter than spamming goroutines
 				// TODO could add source public key parameter
-				go pc.oobHandler(source, dest, msg)
+				go pc.oobHandler(sourceKey, source, dest, msg)
 			}
 			dhtTrafficPool.Put(tr)
 		default:
