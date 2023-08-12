@@ -1,9 +1,8 @@
 package encrypted
 
 import (
-	"github.com/Arceliar/phony"
-
 	"github.com/Arceliar/ironwood/types"
+	"github.com/Arceliar/phony"
 )
 
 const netBufferSize = 128 * 1024

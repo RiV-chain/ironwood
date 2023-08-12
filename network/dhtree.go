@@ -1182,14 +1182,16 @@ func (t *dhtTeardown) decode(data []byte) error {
  **************/
 
 type dhtTraffic struct {
-	source  domain
-	dest    domain
-	kind    byte // in-band vs out-of-band, TODO? separate type?
-	payload []byte
+	source    domain
+	sourceKey publicKey
+	dest      domain
+	kind      byte // in-band vs out-of-band, TODO? separate type?
+	payload   []byte
 }
 
 func (t *dhtTraffic) encode(out []byte) ([]byte, error) {
 	out = append(out, t.source[:]...)
+	out = append(out, t.sourceKey[:]...)
 	out = append(out, t.dest[:]...)
 	out = append(out, t.kind)
 	out = append(out, t.payload...)
@@ -1198,6 +1200,8 @@ func (t *dhtTraffic) encode(out []byte) ([]byte, error) {
 
 func (t *dhtTraffic) decode(data []byte) error {
 	if !wireChopSlice(t.source[:], &data) {
+		return wireDecodeError
+	} else if !wireChopSlice(t.sourceKey[:], &data) {
 		return wireDecodeError
 	} else if !wireChopSlice(t.dest[:], &data) {
 		return wireDecodeError

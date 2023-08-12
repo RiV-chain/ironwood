@@ -56,6 +56,7 @@ func getDHTTraffic() *dhtTraffic {
 	d := dhtTrafficPool.Get().(*dhtTraffic)
 	d.kind = wireDummy
 	d.source = domain{}
+	d.sourceKey = publicKey{}
 	d.dest = domain{}
 	d.payload = d.payload[:0]
 	return d
@@ -101,6 +102,7 @@ func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	}
 	tr := getDHTTraffic()
 	tr.source = pc.core.crypto.domain
+	tr.sourceKey = pc.core.crypto.publicKey
 	copy(tr.dest[:], dest)
 	tr.kind = wireTrafficStandard
 	tr.payload = append(tr.payload[:0], p...)
@@ -203,6 +205,7 @@ func (pc *PacketConn) SendOutOfBand(toKey types.Domain, data []byte) error {
 	}
 	var tr dhtTraffic
 	tr.source = pc.core.crypto.domain
+	tr.sourceKey = pc.core.crypto.publicKey
 	copy(tr.dest[:], toKey)
 	tr.kind = wireTrafficOutOfBand
 	tr.payload = append(tr.payload, data...)
@@ -281,6 +284,7 @@ func (pc *PacketConn) handleTraffic(tr *dhtTraffic) {
 				dest := append(types.Domain(nil), tr.dest[:]...)
 				msg := append([]byte(nil), tr.payload[:]...)
 				// TODO something smarter than spamming goroutines
+				// TODO could add source public key parameter
 				go pc.oobHandler(source, dest, msg)
 			}
 			dhtTrafficPool.Put(tr)

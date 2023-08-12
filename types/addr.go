@@ -1,14 +1,18 @@
 package types
 
-// Addr implements the `net.Addr` interface for `Domain` values.
-type Addr Domain
+import (
+	"encoding/hex"
+)
 
-// Network returns "Domain" as a string, but is otherwise unused.
+// Addr implements the `net.Addr` interface for `ed25519.PublicKey` or `Domain` values.
+type Addr []byte
+
+// Network returns "address" as a string, but is otherwise unused.
 func (a Addr) Network() string {
-	return "Domain"
+	return "address"
 }
 
-// String returns the Domain as a string, but is otherwise unused.
+// String returns the ed25519.PublicKey or Domain as a hexidecimal string, but is otherwise unused.
 func (a Addr) String() string {
-	return string(a)
+	return hex.EncodeToString(a)
 }

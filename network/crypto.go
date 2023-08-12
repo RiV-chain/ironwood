@@ -30,10 +30,6 @@ func (key *privateKey) sign(message []byte) signature {
 	return sig
 }
 
-func (key privateKey) equal(comparedKey privateKey) bool {
-	return key == comparedKey
-}
-
 func (key *publicKey) verify(message []byte, sig *signature) bool {
 	return ed25519.Verify(ed25519.PublicKey(key[:]), message, sig[:])
 }
@@ -42,7 +38,11 @@ func (key domain) equal(comparedKey domain) bool {
 	return key == comparedKey
 }
 
-func (key domain) addr() types.Addr {
+func (key domain) str() string {
+	return string(key[:])
+}
+
+func (key *domain) addr() types.Addr {
 	return types.Addr(key[:])
 }
 
