@@ -27,7 +27,7 @@ func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain) (*PacketConn,
 
 func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
 	for {
-		if n, from, err = pc.PacketConn.ReadFrom(p); err != nil {
+		if n, _, from, err = pc.PacketConn.ReadFrom(p); err != nil {
 			return
 		}
 		fromKey := ed25519.PublicKey(from.(types.Addr))

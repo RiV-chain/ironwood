@@ -12,9 +12,9 @@ import (
 	"github.com/Arceliar/ironwood/types"
 )
 
-func _type_asserts_() {
-	var _ types.PacketConn = new(PacketConn)
-}
+//func _type_asserts_() {
+//	var _ types.PacketConn = new(PacketConn)
+//}
 
 type PacketConn struct {
 	actor        phony.Inbox
@@ -64,13 +64,13 @@ func getDHTTraffic() *dhtTraffic {
 
 // ReadFrom fulfills the net.PacketConn interface, with a types.Addr returned as the from address.
 // Note that failing to call ReadFrom may cause the connection to block and/or leak memory.
-func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
+func (pc *PacketConn) ReadFrom(p []byte) (n int, domain types.Domain, from net.Addr, err error) {
 	var tr *dhtTraffic
 	select {
 	case <-pc.closed:
-		return 0, nil, errors.New("closed")
+		return 0, nil, nil, errors.New("closed")
 	case <-pc.readDeadline.getCancel():
-		return 0, nil, errors.New("deadline exceeded")
+		return 0, nil, nil, errors.New("deadline exceeded")
 	case tr = <-pc.recv:
 		defer dhtTrafficPool.Put(tr)
 	}
@@ -79,7 +79,8 @@ func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
 	if len(p) < len(tr.payload) {
 		n = len(p)
 	}
-	from = tr.source.addr()
+	domain = tr.source.domain()
+	from = tr.sourceKey.addr()
 	return
 }
 

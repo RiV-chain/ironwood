@@ -67,7 +67,7 @@ func TestTwoNodes(t *testing.T) {
 	go func() {
 		defer close(done)
 		msg := make([]byte, 2048)
-		n, from, err := b.ReadFrom(msg)
+		n, _, from, err := b.ReadFrom(msg)
 		if err != nil {
 			panic("err")
 		}
@@ -169,7 +169,7 @@ func TestLineNetwork(t *testing.T) {
 				// Recv from a at b
 				read := make([]byte, 2048)
 				for {
-					n, from, err := b.ReadFrom(read)
+					n, _, from, err := b.ReadFrom(read)
 					bs := read[:n]
 					if !bytes.Equal(bs, msg) || err != nil {
 						if !bytes.Equal(bs, msg) {
@@ -287,7 +287,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 				// Recv from a at b
 				read := make([]byte, 2048)
 				for {
-					n, from, err := b.ReadFrom(read)
+					n, _, from, err := b.ReadFrom(read)
 					bs := read[:n]
 					if !bytes.Equal(bs, msg) || err != nil {
 						if !bytes.Equal(bs, msg) {

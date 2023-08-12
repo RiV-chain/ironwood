@@ -34,6 +34,10 @@ func (key *publicKey) verify(message []byte, sig *signature) bool {
 	return ed25519.Verify(ed25519.PublicKey(key[:]), message, sig[:])
 }
 
+func (key domain) domain() types.Domain {
+	return types.Domain(key[:])
+}
+
 func (key domain) equal(comparedKey domain) bool {
 	return key == comparedKey
 }
@@ -43,6 +47,10 @@ func (key domain) str() string {
 }
 
 func (key *domain) addr() types.Addr {
+	return types.Addr(key[:])
+}
+
+func (key *publicKey) addr() types.Addr {
 	return types.Addr(key[:])
 }
 

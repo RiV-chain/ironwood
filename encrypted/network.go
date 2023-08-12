@@ -17,9 +17,10 @@ type netManager struct {
 }
 
 type netReadInfo struct {
-	from edPub
-	data []byte
-	err  error
+	from   edPub
+	domain types.Domain
+	data   []byte
+	err    error
 }
 
 func (m *netManager) init(pc *PacketConn) {
@@ -31,7 +32,7 @@ func (m *netManager) init(pc *PacketConn) {
 func (m *netManager) recv(from *sessionInfo, data []byte) {
 	m.reader.Act(from, func() {
 		select {
-		case m.readCh <- netReadInfo{from: from.ed, data: data}:
+		case m.readCh <- netReadInfo{from: from.ed, domain: from.domain, data: data}:
 		case <-m.closed:
 		}
 	})
@@ -46,7 +47,7 @@ func (m *netManager) read() {
 		buf := make([]byte, netBufferSize)
 		var rl func()
 		rl = func() {
-			n, from, err := m.pc.PacketConn.ReadFrom(buf)
+			n, domain, from, err := m.pc.PacketConn.ReadFrom(buf)
 			if err != nil {
 				// Exit the loop
 				m.running = false
@@ -70,7 +71,7 @@ func (m *netManager) read() {
 				copy(msg, buf[:n])
 				var fromKey edPub
 				copy(fromKey[:], from.(types.Addr))
-				m.pc.sessions.handleData(m, &fromKey, msg)
+				m.pc.sessions.handleData(m, domain, &fromKey, msg)
 				m.Act(nil, rl) // continue to loop
 			}
 		}
