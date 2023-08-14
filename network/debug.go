@@ -46,8 +46,8 @@ type DebugPathInfo struct {
 
 func (d *Debug) GetSelf() (info DebugSelfInfo) {
 	phony.Block(&d.c.dhtree, func() {
-		info.Key = append(info.Key, d.c.crypto.publicKey[:]...)
-		info.Root = append(info.Root, d.c.dhtree.self.root[:]...)
+		info.Key = append(info.Key, d.c.crypto.domain.Key[:]...)
+		info.Root = append(info.Root, d.c.dhtree.self.root.Key[:]...)
 		info.Coords = make([]uint64, 0)
 		for _, hop := range d.c.dhtree.self.hops {
 			info.Coords = append(info.Coords, uint64(hop.port))
@@ -61,8 +61,8 @@ func (d *Debug) GetPeers() (infos []DebugPeerInfo) {
 	phony.Block(&d.c.dhtree, func() {
 		for p, tinfo := range d.c.dhtree.tinfos {
 			var info DebugPeerInfo
-			info.Key = append(info.Key, p.key[:]...)
-			info.Root = append(info.Root, tinfo.root[:]...)
+			info.Key = append(info.Key, p.domain.Key[:]...)
+			info.Root = append(info.Root, tinfo.root.Key[:]...)
 			info.Coords = make([]uint64, 0)
 			for _, hop := range tinfo.hops {
 				info.Coords = append(info.Coords, uint64(hop.port))
@@ -82,7 +82,7 @@ func (d *Debug) GetDHT() (infos []DebugDHTInfo) {
 	phony.Block(&d.c.dhtree, func() {
 		for _, dinfo := range d.c.dhtree.dinfos {
 			var info DebugDHTInfo
-			info.Key = append(info.Key, dinfo.key[:]...)
+			info.Key = append(info.Key, dinfo.key.Key[:]...)
 			if dinfo.peer != nil {
 				info.Port = uint64(dinfo.peer.port)
 			}

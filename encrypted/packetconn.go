@@ -22,8 +22,8 @@ type PacketConn struct {
 }
 
 // NewPacketConn returns a *PacketConn struct which implements the types.PacketConn interface.
-func NewPacketConn(secret ed25519.PrivateKey) (*PacketConn, error) {
-	npc, err := network.NewPacketConn(secret)
+func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain) (*PacketConn, error) {
+	npc, err := network.NewPacketConn(secret, domain)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,8 @@ func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
 		err = info.err
 		return
 	}
-	n, from = len(info.data), types.Addr(info.from.asKey())
+	// info.from.asKey()
+	n, from = len(info.data), types.Addr(info.from)
 	if n > len(p) {
 		n = len(p)
 	}
@@ -57,19 +58,18 @@ func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		return 0, errors.New("closed")
 	default:
 	}
-	destKey, ok := addr.(types.Addr)
-	if !ok || len(destKey) != edPubSize {
-		return 0, errors.New("bad destination address")
+	dest, ok := addr.(types.Addr)
+	destDomain := types.Domain(dest)
+	if !ok || len(destDomain.Key) != edPubSize {
+		return 0, errors.New("bad destination key length")
 	}
 	if uint64(len(p)) > pc.MTU() {
 		return 0, errors.New("oversized message")
 	}
 	n = len(p)
-	var dest edPub
-	copy(dest[:], destKey)
 	buf := pc.sessions.pool.Get().([]byte)[:0]
 	buf = append(buf, p...)
-	pc.sessions.writeTo(dest, buf)
+	pc.sessions.writeTo(destDomain, buf)
 	return
 }
 

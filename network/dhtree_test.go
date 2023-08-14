@@ -3,7 +3,10 @@ package network
 import (
 	"bytes"
 	"crypto/ed25519"
+	"strconv"
 	"testing"
+
+	"github.com/Arceliar/ironwood/types"
 )
 
 func TestMarshalTreeInfo(t *testing.T) {
@@ -13,16 +16,15 @@ func TestMarshalTreeInfo(t *testing.T) {
 	}
 	var sk privateKey
 	copy(sk[:], priv)
-	info := new(treeInfo)
-	copy(info.root[:], pub)
+	info := newTreeInfo()
+	info.root.Key = pub
+	info.seq = 16777215
 	for idx := 0; idx < 10; idx++ {
 		newPub, newPriv, err := ed25519.GenerateKey(nil)
 		if err != nil {
 			panic(err)
 		}
-		var pk publicKey
-		copy(pk[:], newPub)
-		info = info.add(sk, &peer{key: pk})
+		info = *info.add(sk, &peer{domain: newDomain("example", newPub)})
 		if !info.checkSigs() {
 			t.Log(len(info.hops))
 			t.Log(info.hops[len(info.hops)-1].sig)
@@ -36,12 +38,12 @@ func TestMarshalTreeInfo(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	newInfo := new(treeInfo)
+	newInfo := newTreeInfo()
 	err = newInfo.decode(bs)
 	if err != nil {
 		panic(err)
 	}
-	if !bytes.Equal(info.root[:], newInfo.root[:]) {
+	if !info.root.equal(newInfo.root) {
 		panic("unequal roots")
 	}
 	if len(newInfo.hops) != len(info.hops) {
@@ -50,7 +52,7 @@ func TestMarshalTreeInfo(t *testing.T) {
 	for idx := range newInfo.hops {
 		newHop := newInfo.hops[idx]
 		hop := info.hops[idx]
-		if !bytes.Equal(newHop.next[:], hop.next[:]) {
+		if !newHop.next.equal(hop.next) {
 			panic("unequal next")
 		}
 		if !bytes.Equal(newHop.sig[:], hop.sig[:]) {
@@ -71,16 +73,15 @@ func TestMarshalDHTBootstrap(t *testing.T) {
 	}
 	var sk privateKey
 	copy(sk[:], priv)
-	info := new(treeInfo)
-	copy(info.root[:], pub)
+	info := newTreeInfo()
+	copy(info.root.Key[:], pub)
+	copy(info.root.Name[:], []byte("doom"))
 	for idx := 0; idx < 10; idx++ {
 		newPub, newPriv, err := ed25519.GenerateKey(nil)
 		if err != nil {
 			panic(err)
 		}
-		var pk publicKey
-		copy(pk[:], newPub)
-		info = info.add(sk, &peer{key: pk, port: 1})
+		info = *info.add(sk, &peer{domain: newDomain("example"+strconv.Itoa(idx), newPub), port: 1})
 		if !info.checkSigs() {
 			panic("checkSigs failed")
 		} else if !info.checkLoops() {
@@ -89,10 +90,11 @@ func TestMarshalDHTBootstrap(t *testing.T) {
 		copy(sk[:], newPriv)
 	}
 	c := new(core)
-	c.init(priv)
-	c.dhtree.self = info
-	bootstrap := new(dhtBootstrap)
-	bootstrap.label = *c.dhtree._getLabel()
+	d := types.Domain(newDomain("example", pub))
+	c.init(priv, d)
+	c.dhtree.self = &info
+	bootstrap := newBootstrap()
+	bootstrap.label = c.dhtree._getLabel()
 	if !bootstrap.check() {
 		panic("failed to check bootstrap")
 	}
@@ -100,7 +102,7 @@ func TestMarshalDHTBootstrap(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	newBootstrap := new(dhtBootstrap)
+	newBootstrap := newBootstrap()
 	err = newBootstrap.decode(bs)
 	if err != nil {
 		panic(err)
@@ -111,7 +113,7 @@ func TestMarshalDHTBootstrap(t *testing.T) {
 }
 
 func TestMarshalDHTSetup(t *testing.T) {
-	_, destPriv, err := ed25519.GenerateKey(nil)
+	destPub, destPriv, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -119,11 +121,11 @@ func TestMarshalDHTSetup(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	dpc, _ := NewPacketConn(destPriv)
-	spc, _ := NewPacketConn(sourcePriv)
-	var pk publicKey
-	copy(pk[:], sourcePub)
-	token := dpc.core.dhtree._getToken(pk)
+	dest := types.Domain(newDomain("d1", destPub))
+	src := types.Domain(newDomain("d2", sourcePub))
+	dpc, _ := NewPacketConn(destPriv, dest)
+	spc, _ := NewPacketConn(sourcePriv, src)
+	token := dpc.core.dhtree._getToken(domain(src))
 	setup := spc.core.dhtree._newSetup(token)
 	if !setup.check() {
 		panic("initial check failed")

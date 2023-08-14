@@ -22,12 +22,12 @@ func (pf *pathfinder) init(t *dhtree) {
 	pf.paths = make(map[publicKey]*pathInfo)
 }
 
-func (pf *pathfinder) _getNotify(dest publicKey, keepAlive bool) *pathNotify {
+func (pf *pathfinder) _getNotify(dest domain, keepAlive bool) *pathNotify {
 	throttle := pathfinderTHROTTLE
 	if keepAlive {
 		throttle = pathfinderTIMEOUT
 	}
-	if info, isIn := pf.paths[dest]; isIn && time.Since(info.ntime) > throttle {
+	if info, isIn := pf.paths[dest.publicKey()]; isIn && time.Since(info.ntime) > throttle {
 		n := new(pathNotify)
 		n.label = pf.dhtree._getLabel()
 		n.dest = dest
@@ -36,7 +36,7 @@ func (pf *pathfinder) _getNotify(dest publicKey, keepAlive bool) *pathNotify {
 			panic("this should never happen")
 		}
 		var bs []byte
-		bs = append(bs, dest[:]...)
+		bs = append(bs, dest.Key[:]...)
 		bs = append(bs, ibytes...)
 		n.sig = pf.dhtree.core.crypto.privateKey.sign(bs)
 		info.ntime = time.Now()
@@ -46,7 +46,7 @@ func (pf *pathfinder) _getNotify(dest publicKey, keepAlive bool) *pathNotify {
 }
 
 func (pf *pathfinder) _getLookup(n *pathNotify) *pathLookup {
-	if info, isIn := pf.paths[n.label.key]; isIn {
+	if info, isIn := pf.paths[n.label.domain.publicKey()]; isIn {
 		if time.Since(info.ltime) < pathfinderTHROTTLE || !n.check() {
 			return nil
 		}
@@ -60,13 +60,13 @@ func (pf *pathfinder) _getLookup(n *pathNotify) *pathLookup {
 
 func (pf *pathfinder) _getResponse(l *pathLookup) *pathResponse {
 	// Check if lookup comes from us
-	dest := l.notify.label.key
-	if !dest.equal(pf.dhtree.core.crypto.publicKey) || !l.notify.check() {
+	dest := l.notify.label.domain
+	if !dest.equal(pf.dhtree.core.crypto.domain) || !l.notify.check() {
 		// TODO? skip l.notify.check()? only check the last hop?
 		return nil
 	}
 	r := new(pathResponse)
-	r.from = pf.dhtree.core.crypto.publicKey
+	r.from = pf.dhtree.core.crypto.domain.publicKey()
 	r.path = make([]peerPort, 0, len(l.rpath)+1)
 	for idx := len(l.rpath) - 1; idx >= 0; idx-- {
 		r.path = append(r.path, l.rpath[idx])
@@ -75,9 +75,9 @@ func (pf *pathfinder) _getResponse(l *pathLookup) *pathResponse {
 	return r
 }
 
-func (pf *pathfinder) _getPath(dest publicKey) []peerPort {
+func (pf *pathfinder) _getPath(dest domain) []peerPort {
 	var info *pathInfo
-	if nfo, isIn := pf.paths[dest]; isIn {
+	if nfo, isIn := pf.paths[dest.publicKey()]; isIn {
 		info = nfo
 		info.timer.Stop()
 		// TODO? Check info.ntime and possibly send a notify?
@@ -85,13 +85,13 @@ func (pf *pathfinder) _getPath(dest publicKey) []peerPort {
 		info = new(pathInfo)
 		info.ltime = time.Now().Add(-pathfinderTHROTTLE)
 		info.ntime = time.Now().Add(-pathfinderTHROTTLE)
-		pf.paths[dest] = info
+		pf.paths[dest.publicKey()] = info
 	}
 	info.timer = time.AfterFunc(pathfinderTIMEOUT, func() {
 		pf.dhtree.Act(nil, func() {
-			if pf.paths[dest] == info {
+			if pf.paths[dest.publicKey()] == info {
 				info.timer.Stop()
-				delete(pf.paths, dest)
+				delete(pf.paths, dest.publicKey())
 			}
 		})
 	})
@@ -133,7 +133,7 @@ func (pf *pathfinder) handleResponse(from phony.Actor, r *pathResponse) {
 	})
 }
 
-func (pf *pathfinder) _doNotify(dest publicKey, keepAlive bool) {
+func (pf *pathfinder) _doNotify(dest domain, keepAlive bool) {
 	if n := pf._getNotify(dest, keepAlive); n != nil {
 		pf.handleNotify(nil, n) // TODO pf._handleNotify
 	}
@@ -167,8 +167,15 @@ type pathInfo struct {
 
 type pathNotify struct {
 	sig   signature // TODO? remove this? is it really useful for anything?...
-	dest  publicKey // Who to send the notify to
-	label *treeLabel
+	dest  domain    // Who to send the notify to
+	label treeLabel
+}
+
+func newPathNotify() pathNotify {
+	return pathNotify{
+		sig:  signature(make([]byte, signatureSize)),
+		dest: initDomain(),
+	}
 }
 
 func (pn *pathNotify) check() bool {
@@ -180,14 +187,14 @@ func (pn *pathNotify) check() bool {
 		return false
 	}
 	var bs []byte
-	bs = append(bs, pn.dest[:]...)
+	bs = append(bs, pn.dest.Key[:]...)
 	bs = append(bs, ibytes...)
-	dest := pn.label.key
+	dest := pn.label.domain
 	return dest.verify(bs, &pn.sig)
 }
 
 func (pn *pathNotify) encode(out []byte) ([]byte, error) {
-	if pn.label == nil {
+	if &pn.label == nil {
 		return nil, wireEncodeError
 	}
 	var bs []byte
@@ -196,17 +203,20 @@ func (pn *pathNotify) encode(out []byte) ([]byte, error) {
 		return out, err
 	}
 	out = append(out, pn.sig[:]...)
-	out = append(out, pn.dest[:]...)
+	out = append(out, pn.dest.Key[:]...)
+	out = append(out, pn.dest.Name[:]...)
 	out = append(out, bs...)
 	return out, nil
 }
 
 func (pn *pathNotify) decode(data []byte) error {
-	var tmp pathNotify
-	tmp.label = new(treeLabel)
+	tmp := newPathNotify()
+	tmp.label = newTreeLabel()
 	if !wireChopSlice(tmp.sig[:], &data) {
 		return wireDecodeError
-	} else if !wireChopSlice(tmp.dest[:], &data) {
+	} else if !wireChopSlice(tmp.dest.Key[:], &data) {
+		return wireDecodeError
+	} else if !wireChopSlice(tmp.dest.Name[:], &data) {
 		return wireDecodeError
 	} else if err := tmp.label.decode(data); err != nil {
 		return err

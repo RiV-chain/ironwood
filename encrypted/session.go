@@ -53,24 +53,24 @@ func (mgr *sessionManager) init(pc *PacketConn) {
 	}
 }
 
-func (mgr *sessionManager) _newSession(ed *edPub, recv, send boxPub, seq uint64) *sessionInfo {
-	info := newSession(ed, recv, send, seq)
+func (mgr *sessionManager) _newSession(domain types.Domain, recv, send boxPub, seq uint64) *sessionInfo {
+	info := newSession(domain, recv, send, seq)
 	info.Act(mgr, func() {
 		info.mgr = mgr
 		info._resetTimer()
 	})
-	mgr.sessions[info.ed] = info
+	mgr.sessions[edPub(info.domain.Key)] = info
 	return info
 }
 
-func (mgr *sessionManager) _sessionForInit(pub *edPub, init *sessionInit) (*sessionInfo, *sessionBuffer) {
+func (mgr *sessionManager) _sessionForInit(domain types.Domain, init *sessionInit) (*sessionInfo, *sessionBuffer) {
 	var info *sessionInfo
 	var buf *sessionBuffer
-	if info = mgr.sessions[*pub]; info == nil {
-		info = mgr._newSession(pub, init.current, init.next, init.seq)
-		if buf = mgr.buffers[*pub]; buf != nil {
+	if info = mgr.sessions[edPub(domain.Key)]; info == nil {
+		info = mgr._newSession(domain, init.current, init.next, init.seq)
+		if buf = mgr.buffers[edPub(domain.Key)]; buf != nil {
 			buf.timer.Stop()
-			delete(mgr.buffers, *pub)
+			delete(mgr.buffers, edPub(domain.Key))
 			info.sendPub, info.sendPriv = buf.init.current, buf.currentPriv
 			info.nextPub, info.nextPriv = buf.init.next, buf.nextPriv
 			info._fixShared(0, 0)
@@ -80,7 +80,7 @@ func (mgr *sessionManager) _sessionForInit(pub *edPub, init *sessionInit) (*sess
 	return info, buf
 }
 
-func (mgr *sessionManager) handleData(from phony.Actor, pub *edPub, data []byte) {
+func (mgr *sessionManager) handleData(from phony.Actor, domain types.Domain, data []byte) {
 	mgr.Act(from, func() {
 		if len(data) == 0 {
 			return
@@ -89,23 +89,23 @@ func (mgr *sessionManager) handleData(from phony.Actor, pub *edPub, data []byte)
 		case sessionTypeDummy:
 		case sessionTypeInit:
 			init := new(sessionInit)
-			if init.decrypt(&mgr.pc.secretBox, pub, data) {
-				mgr._handleInit(pub, init)
+			if init.decrypt(&mgr.pc.secretBox, (*edPub)(domain.Key), data) {
+				mgr._handleInit(domain, init)
 			}
 		case sessionTypeAck:
 			ack := new(sessionAck)
-			if ack.decrypt(&mgr.pc.secretBox, pub, data) {
-				mgr._handleAck(pub, ack)
+			if ack.decrypt(&mgr.pc.secretBox, (*edPub)(domain.Key), data) {
+				mgr._handleAck(domain, ack)
 			}
 		case sessionTypeTraffic:
-			mgr._handleTraffic(pub, data)
+			mgr._handleTraffic(domain, data)
 		default:
 		}
 	})
 }
 
-func (mgr *sessionManager) _handleInit(pub *edPub, init *sessionInit) {
-	if info, buf := mgr._sessionForInit(pub, init); info != nil {
+func (mgr *sessionManager) _handleInit(domain types.Domain, init *sessionInit) {
+	if info, buf := mgr._sessionForInit(domain, init); info != nil {
 		info.handleInit(mgr, init)
 		if buf != nil && buf.data != nil {
 			info.doSend(mgr, buf.data)
@@ -113,9 +113,9 @@ func (mgr *sessionManager) _handleInit(pub *edPub, init *sessionInit) {
 	}
 }
 
-func (mgr *sessionManager) _handleAck(pub *edPub, ack *sessionAck) {
-	_, isOld := mgr.sessions[*pub]
-	if info, buf := mgr._sessionForInit(pub, &ack.sessionInit); info != nil {
+func (mgr *sessionManager) _handleAck(domain types.Domain, ack *sessionAck) {
+	_, isOld := mgr.sessions[edPub(domain.Key)]
+	if info, buf := mgr._sessionForInit(domain, &ack.sessionInit); info != nil {
 		if isOld {
 			info.handleAck(mgr, ack)
 		} else {
@@ -127,8 +127,8 @@ func (mgr *sessionManager) _handleAck(pub *edPub, ack *sessionAck) {
 	}
 }
 
-func (mgr *sessionManager) _handleTraffic(pub *edPub, msg []byte) {
-	if info := mgr.sessions[*pub]; info != nil {
+func (mgr *sessionManager) _handleTraffic(domain types.Domain, msg []byte) {
+	if info := mgr.sessions[edPub(domain.Key)]; info != nil {
 		info.doRecv(mgr, msg)
 	} else {
 		// We don't know that the node really exists, it could be spoofed/replay
@@ -138,24 +138,24 @@ func (mgr *sessionManager) _handleTraffic(pub *edPub, msg []byte) {
 		currentPub, _ := newBoxKeys()
 		nextPub, _ := newBoxKeys()
 		init := newSessionInit(&currentPub, &nextPub, 0)
-		mgr.sendInit(pub, &init)
+		mgr.sendInit(domain, &init)
 	}
 }
 
-func (mgr *sessionManager) writeTo(toKey edPub, msg []byte) {
+func (mgr *sessionManager) writeTo(toDomain types.Domain, msg []byte) {
 	mgr.Act(nil, func() {
-		if info := mgr.sessions[toKey]; info != nil {
+		if info := mgr.sessions[edPub(toDomain.Key)]; info != nil {
 			info.doSend(mgr, msg)
 		} else {
 			// Need to buffer the traffic
-			mgr._bufferAndInit(toKey, msg)
+			mgr._bufferAndInit(toDomain, msg)
 		}
 	})
 }
 
-func (mgr *sessionManager) _bufferAndInit(toKey edPub, msg []byte) {
+func (mgr *sessionManager) _bufferAndInit(toDomain types.Domain, msg []byte) {
 	var buf *sessionBuffer
-	if buf = mgr.buffers[toKey]; buf == nil {
+	if buf = mgr.buffers[edPub(toDomain.Key)]; buf == nil {
 		// Create a new buffer (including timer)
 		buf = new(sessionBuffer)
 		currentPub, currentPriv := newBoxKeys()
@@ -164,30 +164,30 @@ func (mgr *sessionManager) _bufferAndInit(toKey edPub, msg []byte) {
 		buf.currentPriv = currentPriv
 		buf.nextPriv = nextPriv
 		buf.timer = time.AfterFunc(0, func() {})
-		mgr.buffers[toKey] = buf
+		mgr.buffers[edPub(toDomain.Key)] = buf
 	}
 	buf.data = msg
 	buf.timer.Stop()
-	mgr.sendInit(&toKey, &buf.init)
+	mgr.sendInit(toDomain, &buf.init)
 	buf.timer = time.AfterFunc(sessionTimeout, func() {
 		mgr.Act(nil, func() {
-			if b := mgr.buffers[toKey]; b == buf {
+			if b := mgr.buffers[edPub(toDomain.Key)]; b == buf {
 				b.timer.Stop()
-				delete(mgr.buffers, toKey)
+				delete(mgr.buffers, edPub(toDomain.Key))
 			}
 		})
 	})
 }
 
-func (mgr *sessionManager) sendInit(dest *edPub, init *sessionInit) {
-	if bs, err := init.encrypt(&mgr.pc.secretEd, dest); err == nil {
-		mgr.pc.PacketConn.WriteTo(bs, types.Addr(dest.asKey()))
+func (mgr *sessionManager) sendInit(toDomain types.Domain, init *sessionInit) {
+	if bs, err := init.encrypt(&mgr.pc.secretEd, (*edPub)(toDomain.Key)); err == nil {
+		mgr.pc.PacketConn.WriteTo(bs, types.Addr(toDomain))
 	}
 }
 
-func (mgr *sessionManager) sendAck(dest *edPub, ack *sessionAck) {
-	if bs, err := ack.encrypt(&mgr.pc.secretEd, dest); err == nil {
-		mgr.pc.PacketConn.WriteTo(bs, types.Addr(dest.asKey()))
+func (mgr *sessionManager) sendAck(toDomain types.Domain, ack *sessionAck) {
+	if bs, err := ack.encrypt(&mgr.pc.secretEd, (*edPub)(toDomain.Key)); err == nil {
+		mgr.pc.PacketConn.WriteTo(bs, types.Addr(toDomain))
 	}
 }
 
@@ -197,9 +197,10 @@ func (mgr *sessionManager) sendAck(dest *edPub, ack *sessionAck) {
 
 type sessionInfo struct {
 	phony.Inbox
-	mgr          *sessionManager
-	seq          uint64 // remote seq
-	ed           edPub  // remote ed key
+	mgr    *sessionManager
+	seq    uint64       // remote seq
+	domain types.Domain // remote domain
+	//ed           edPub        // remote ed key
 	remoteKeySeq uint64 // signals rotation of current/next
 	current      boxPub // send to this, expect to receive from it
 	next         boxPub // if we receive from this, then rotate it to current
@@ -222,10 +223,10 @@ type sessionInfo struct {
 	tx           uint64
 }
 
-func newSession(ed *edPub, current, next boxPub, seq uint64) *sessionInfo {
+func newSession(domain types.Domain, current, next boxPub, seq uint64) *sessionInfo {
 	info := new(sessionInfo)
 	info.seq = seq - 1 // so the first update works
-	info.ed = *ed
+	info.domain = domain
 	info.current, info.next = current, next
 	info.recvPub, info.recvPriv = newBoxKeys()
 	info.sendPub, info.sendPriv = newBoxKeys()
@@ -248,8 +249,8 @@ func (info *sessionInfo) _resetTimer() {
 	}
 	info.timer = time.AfterFunc(sessionTimeout, func() {
 		info.mgr.Act(nil, func() {
-			if oldInfo := info.mgr.sessions[info.ed]; oldInfo == info {
-				delete(info.mgr.sessions, info.ed)
+			if oldInfo := info.mgr.sessions[edPub(info.domain.Key)]; oldInfo == info {
+				delete(info.mgr.sessions, edPub(info.domain.Key))
 			}
 		})
 	})
@@ -320,7 +321,7 @@ func (info *sessionInfo) doSend(from phony.Actor, msg []byte) {
 		bs = boxSeal(bs, tmp, info.sendNonce, &info.sendShared)
 		info.mgr.pool.Put(tmp[:0]) // nolint:staticcheck
 		// send
-		info.mgr.pc.PacketConn.WriteTo(bs, types.Addr(info.ed[:]))
+		info.mgr.pc.PacketConn.WriteTo(bs, types.Addr(info.domain))
 		info.tx += uint64(len(msg))
 		info._resetTimer()
 	})
@@ -433,13 +434,13 @@ func (info *sessionInfo) doRecv(from phony.Actor, msg []byte) {
 
 func (info *sessionInfo) _sendInit() {
 	init := newSessionInit(&info.sendPub, &info.nextPub, info.localKeySeq)
-	info.mgr.sendInit(&info.ed, &init)
+	info.mgr.sendInit(info.domain, &init)
 }
 
 func (info *sessionInfo) _sendAck() {
 	init := newSessionInit(&info.sendPub, &info.nextPub, info.localKeySeq)
 	ack := sessionAck{init}
-	info.mgr.sendAck(&info.ed, &ack)
+	info.mgr.sendAck(info.domain, &ack)
 }
 
 /***************
