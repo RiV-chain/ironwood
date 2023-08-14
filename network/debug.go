@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/Arceliar/ironwood/types"
 	"github.com/Arceliar/phony"
 )
 
@@ -17,15 +18,15 @@ func (d *Debug) init(c *core) {
 }
 
 type DebugSelfInfo struct {
-	Key     ed25519.PublicKey
-	Root    ed25519.PublicKey
+	Domain  types.Domain
+	Root    types.Domain
 	Coords  []uint64
 	Updated time.Time
 }
 
 type DebugPeerInfo struct {
-	Key      ed25519.PublicKey
-	Root     ed25519.PublicKey
+	Domain   types.Domain
+	Root     types.Domain
 	Coords   []uint64
 	Port     uint64
 	Updated  time.Time
@@ -34,9 +35,9 @@ type DebugPeerInfo struct {
 }
 
 type DebugDHTInfo struct {
-	Key  ed25519.PublicKey
-	Port uint64
-	Rest uint64
+	Domain types.Domain
+	Port   uint64
+	Rest   uint64
 }
 
 type DebugPathInfo struct {
@@ -46,8 +47,8 @@ type DebugPathInfo struct {
 
 func (d *Debug) GetSelf() (info DebugSelfInfo) {
 	phony.Block(&d.c.dhtree, func() {
-		info.Key = append(info.Key, d.c.crypto.domain.Key[:]...)
-		info.Root = append(info.Root, d.c.dhtree.self.root.Key[:]...)
+		info.Domain = types.Domain(d.c.crypto.domain)
+		info.Root = types.Domain(d.c.dhtree.self.root)
 		info.Coords = make([]uint64, 0)
 		for _, hop := range d.c.dhtree.self.hops {
 			info.Coords = append(info.Coords, uint64(hop.port))
@@ -61,8 +62,8 @@ func (d *Debug) GetPeers() (infos []DebugPeerInfo) {
 	phony.Block(&d.c.dhtree, func() {
 		for p, tinfo := range d.c.dhtree.tinfos {
 			var info DebugPeerInfo
-			info.Key = append(info.Key, p.domain.Key[:]...)
-			info.Root = append(info.Root, tinfo.root.Key[:]...)
+			info.Domain = types.Domain(d.c.crypto.domain)
+			info.Root = types.Domain(d.c.dhtree.self.root)
 			info.Coords = make([]uint64, 0)
 			for _, hop := range tinfo.hops {
 				info.Coords = append(info.Coords, uint64(hop.port))
@@ -82,7 +83,7 @@ func (d *Debug) GetDHT() (infos []DebugDHTInfo) {
 	phony.Block(&d.c.dhtree, func() {
 		for _, dinfo := range d.c.dhtree.dinfos {
 			var info DebugDHTInfo
-			info.Key = append(info.Key, dinfo.key.Key[:]...)
+			info.Domain = types.Domain(dinfo.key)
 			if dinfo.peer != nil {
 				info.Port = uint64(dinfo.peer.port)
 			}
