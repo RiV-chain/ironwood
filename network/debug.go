@@ -62,8 +62,8 @@ func (d *Debug) GetPeers() (infos []DebugPeerInfo) {
 	phony.Block(&d.c.dhtree, func() {
 		for p, tinfo := range d.c.dhtree.tinfos {
 			var info DebugPeerInfo
-			info.Domain = types.Domain(d.c.crypto.domain)
-			info.Root = types.Domain(d.c.dhtree.self.root)
+			info.Domain = types.Domain(p.domain)
+			info.Root = types.Domain(tinfo.root)
 			info.Coords = make([]uint64, 0)
 			for _, hop := range tinfo.hops {
 				info.Coords = append(info.Coords, uint64(hop.port))
