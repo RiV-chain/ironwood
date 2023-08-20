@@ -1,6 +1,7 @@
 package network
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"errors"
 	"net"
@@ -264,7 +265,8 @@ func (pc *PacketConn) handleTraffic(tr *dhtTraffic) {
 			// Drop the traffic
 			dhtTrafficPool.Put(tr)
 		case wireTrafficStandard:
-			if tr.dest.equal(pc.core.crypto.domain) {
+			//wire traffic by Domain name destination
+			if bytes.Equal(tr.dest.Name, pc.core.crypto.domain.Name) {
 				select {
 				case pc.recv <- tr:
 				case <-pc.closed:
