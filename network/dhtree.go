@@ -22,7 +22,7 @@ type dhtree struct {
 	phony.Inbox
 	core       *core
 	pathfinder pathfinder
-	expired    map[publicKey]treeExpiredInfo // stores root highest seq and when it expires
+	expired    map[name]treeExpiredInfo // stores root highest seq and when it expires
 	tinfos     map[*peer]*treeInfo
 	dinfos     map[dhtMapKey]*dhtInfo
 	self       *treeInfo           // self info
@@ -45,7 +45,7 @@ type treeExpiredInfo struct {
 
 func (t *dhtree) init(c *core) {
 	t.core = c
-	t.expired = make(map[publicKey]treeExpiredInfo)
+	t.expired = make(map[name]treeExpiredInfo)
 	t.tinfos = make(map[*peer]*treeInfo)
 	t.dinfos = make(map[dhtMapKey]*dhtInfo)
 	t.dkeys = make(map[*dhtInfo]domain)
@@ -81,8 +81,8 @@ func (t *dhtree) update(from phony.Actor, info *treeInfo, p *peer) {
 		info.time = time.Now() // Order by processing time, not receiving time...
 		t.hseq++
 		info.hseq = t.hseq // Used to track order without comparing timestamps, since some platforms have *horrible* time resolution
-		if exp, isIn := t.expired[info.root.publicKey()]; !isIn || exp.seq < info.seq {
-			t.expired[info.root.publicKey()] = treeExpiredInfo{seq: info.seq, time: info.time}
+		if exp, isIn := t.expired[info.root.name()]; !isIn || exp.seq < info.seq {
+			t.expired[info.root.name()] = treeExpiredInfo{seq: info.seq, time: info.time}
 		}
 		if t.tinfos[p] == nil {
 			// The peer may have missed an update due to a race between creating the peer and now
@@ -164,13 +164,13 @@ func (t *dhtree) _fix() {
 	}
 	for _, info := range t.tinfos {
 		// Refill expired to include non-root nodes (in case we're replacing something)
-		if exp, isIn := t.expired[info.root.publicKey()]; !isIn || exp.seq < info.seq || exp.seq == info.seq && info.time.Before(exp.time) {
+		if exp, isIn := t.expired[info.root.name()]; !isIn || exp.seq < info.seq || exp.seq == info.seq && info.time.Before(exp.time) {
 			// Fill expired as we go
-			t.expired[info.root.publicKey()] = treeExpiredInfo{seq: info.seq, time: info.time}
+			t.expired[info.root.name()] = treeExpiredInfo{seq: info.seq, time: info.time}
 		}
 	}
 	for p, info := range t.tinfos {
-		if exp, isIn := t.expired[info.root.publicKey()]; isIn {
+		if exp, isIn := t.expired[info.root.name()]; isIn {
 			if info.seq < exp.seq {
 				continue // skip old sequence numbers
 			} else if info.seq == exp.seq && time.Since(exp.time) > treeTIMEOUT {
@@ -205,7 +205,7 @@ func (t *dhtree) _fix() {
 			delay = treeANNOUNCE
 		} else {
 			// Figure out when the root needs to time out
-			stopTime := t.expired[t.self.root.publicKey()].time.Add(treeTIMEOUT)
+			stopTime := t.expired[t.self.root.name()].time.Add(treeTIMEOUT)
 			delay = time.Until(stopTime)
 		}
 		t.stimer = time.AfterFunc(delay, func() {
@@ -222,7 +222,7 @@ func (t *dhtree) _fix() {
 	}
 	// Clean up t.expired (remove anything worse than the current root)
 	for skey := range t.expired {
-		if t.self.root.publicKey().treeLess(skey) {
+		if t.self.root.name().treeLess(skey) {
 			delete(t.expired, skey)
 		}
 	}
