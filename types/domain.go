@@ -23,7 +23,7 @@ func NewDomain(name string, key ed25519.PublicKey) Domain {
 	}
 }
 
-func (a Domain) GetNormalizedName(comparedDomain Domain) []byte {
+func (a Domain) GetNormalizedName() []byte {
 	return truncateZeroBytes(a.Name)
 }
 
