@@ -22,3 +22,15 @@ func NewDomain(name string, key ed25519.PublicKey) Domain {
 		Name: append([]byte(name), make([]byte, ed25519.PublicKeySize-len([]byte(name)))...),
 	}
 }
+
+func (a Domain) GetNormalizedName(comparedDomain Domain) []byte {
+	return truncateZeroBytes(a.Name)
+}
+
+func truncateZeroBytes(data []byte) []byte {
+	length := len(data)
+	for length > 0 && data[length-1] == 0 {
+		length--
+	}
+	return data[:length]
+}
