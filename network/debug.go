@@ -17,6 +17,10 @@ func (d *Debug) init(c *core) {
 	d.c = c
 }
 
+type DebugLabelInfo struct {
+	Label treeLabel
+}
+
 type DebugSelfInfo struct {
 	Domain  types.Domain
 	Root    types.Domain
@@ -43,6 +47,13 @@ type DebugDHTInfo struct {
 type DebugPathInfo struct {
 	Key  ed25519.PublicKey
 	Path []uint64
+}
+
+func (d *Debug) GetLabel() (info DebugLabelInfo) {
+	phony.Block(&d.c.dhtree, func() {
+		info.Label = d.c.dhtree._getLabel()
+	})
+	return
 }
 
 func (d *Debug) GetSelf() (info DebugSelfInfo) {
