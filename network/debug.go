@@ -18,11 +18,11 @@ func (d *Debug) init(c *core) {
 }
 
 type DebugLabelInfo struct {
-	Sig    signature
-	Domain domain
-	Root   domain
+	Sig    []byte
+	Domain types.Domain
+	Root   types.Domain
 	Seq    uint64
-	Path   []peerPort
+	Path   []uint64
 }
 
 type DebugSelfInfo struct {
@@ -57,11 +57,14 @@ func (d *Debug) GetLabel() (info DebugLabelInfo) {
 	phony.Block(&d.c.dhtree, func() {
 		l := d.c.dhtree._getLabel()
 		info = DebugLabelInfo{
-			Domain: l.domain,
-			Root:   l.root,
-			Sig:    l.sig,
+			Domain: types.Domain(l.domain),
+			Root:   types.Domain(l.root),
+			Sig:    []byte(l.sig[:]),
 			Seq:    l.seq,
-			Path:   l.path,
+		}
+		info.Path = make([]uint64, 0)
+		for _, port := range l.path {
+			info.Path = append(info.Path, uint64(port))
 		}
 	})
 	return
