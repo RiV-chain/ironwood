@@ -22,6 +22,7 @@ type DebugLabelInfo struct {
 	Domain types.Domain
 	Root   types.Domain
 	Seq    uint64
+	Beacon uint64
 	Path   []uint64
 }
 
@@ -61,6 +62,7 @@ func (d *Debug) GetLabel() (info DebugLabelInfo) {
 			Root:   types.Domain(l.root),
 			Sig:    []byte(l.sig[:]),
 			Seq:    l.seq,
+			Beacon: l.beacon,
 		}
 		info.Path = make([]uint64, 0)
 		for _, port := range l.path {

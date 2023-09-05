@@ -3,6 +3,7 @@ package network
 import (
 	"crypto/rand"
 	"encoding/binary"
+	m "math/rand"
 	"time"
 
 	"github.com/Arceliar/phony"
@@ -155,10 +156,12 @@ func (t *dhtree) _fix() {
 	if t.self == nil || t.core.crypto.domain.treeLess(t.self.root) {
 		// Note that seq needs to be non-decreasing for the node to function as a root
 		//  a timestamp it used to partly mitigate rollbacks from restarting
+		m.New(m.NewSource(time.Now().UnixNano()))
 		t.self = &treeInfo{
-			root: t.core.crypto.domain,
-			seq:  uint64(time.Now().Unix()),
-			time: time.Now(),
+			root:   t.core.crypto.domain,
+			seq:    uint64(time.Now().Unix()),
+			time:   time.Now(),
+			beacon: m.Uint64(),
 		}
 		t.parent = nil
 	}
@@ -699,11 +702,12 @@ func (t *dhtree) _getToken(source domain) dhtSetupToken {
  ************/
 
 type treeInfo struct {
-	time time.Time // Note: *NOT* serialized
-	hseq uint64    // Note: *NOT* serialized, set when handling the update
-	root domain
-	seq  uint64
-	hops []treeHop
+	time   time.Time // Note: *NOT* serialized
+	hseq   uint64    // Note: *NOT* serialized, set when handling the update
+	root   domain
+	seq    uint64
+	beacon uint64
+	hops   []treeHop
 }
 
 func newTreeInfo() treeInfo {
@@ -752,6 +756,9 @@ func (info *treeInfo) checkSigs() bool {
 	seq := make([]byte, 8)
 	binary.BigEndian.PutUint64(seq, info.seq)
 	bs = append(bs, seq...)
+	beacon := make([]byte, 8)
+	binary.BigEndian.PutUint64(beacon, info.beacon)
+	bs = append(bs, beacon...)
 	for _, hop := range info.hops {
 		bs = append(bs, hop.next.Key[:]...)
 		bs = wireEncodeUint(bs, uint64(hop.port))
@@ -782,6 +789,9 @@ func (info *treeInfo) add(priv privateKey, next *peer) *treeInfo {
 	seq := make([]byte, 8)
 	binary.BigEndian.PutUint64(seq, info.seq)
 	bs = append(bs, seq...)
+	beacon := make([]byte, 8)
+	binary.BigEndian.PutUint64(beacon, info.beacon)
+	bs = append(bs, beacon...)
 	for _, hop := range info.hops {
 		bs = append(bs, hop.next.Key[:]...)
 		bs = wireEncodeUint(bs, uint64(hop.port))
@@ -822,6 +832,9 @@ func (info *treeInfo) encode(out []byte) ([]byte, error) {
 	seq := make([]byte, 8)
 	binary.BigEndian.PutUint64(seq, info.seq)
 	out = append(out, seq...)
+	beacon := make([]byte, 8)
+	binary.BigEndian.PutUint64(beacon, info.beacon)
+	out = append(out, beacon...)
 	for _, hop := range info.hops {
 		out = append(out, hop.next.Key[:]...)
 		out = append(out, hop.next.Name[:]...)
@@ -841,6 +854,12 @@ func (info *treeInfo) decode(data []byte) error {
 	}
 	if len(data) >= 8 {
 		nfo.seq = binary.BigEndian.Uint64(data[:8])
+		data = data[8:]
+	} else {
+		return wireDecodeError
+	}
+	if len(data) >= 8 {
+		nfo.beacon = binary.BigEndian.Uint64(data[:8])
 		data = data[8:]
 	} else {
 		return wireDecodeError
@@ -873,6 +892,7 @@ type treeLabel struct {
 	domain domain
 	root   domain
 	seq    uint64
+	beacon uint64
 	path   []peerPort
 }
 
@@ -890,6 +910,9 @@ func (l *treeLabel) bytesForSig() []byte {
 	seq := make([]byte, 8)
 	binary.BigEndian.PutUint64(seq, l.seq)
 	bs = append(bs, seq...)
+	beacon := make([]byte, 8)
+	binary.BigEndian.PutUint64(beacon, l.beacon)
+	bs = append(bs, beacon...)
 	bs = wireEncodePath(bs, l.path)
 	return bs
 }
@@ -908,6 +931,9 @@ func (l *treeLabel) encode(out []byte) ([]byte, error) {
 	seq := make([]byte, 8)
 	binary.BigEndian.PutUint64(seq, l.seq)
 	out = append(out, seq...)
+	beacon := make([]byte, 8)
+	binary.BigEndian.PutUint64(beacon, l.beacon)
+	out = append(out, beacon...)
 	out = wireEncodePath(out, l.path)
 	return out, nil
 }
@@ -924,12 +950,21 @@ func (l *treeLabel) decode(data []byte) error {
 		return wireDecodeError
 	} else if !wireChopSlice(tmp.root.Name[:], &data) {
 		return wireDecodeError
-	} else if len(data) < 8 {
-		return wireDecodeError
-	} else {
+	}
+
+	if len(data) >= 8 {
 		tmp.seq = binary.BigEndian.Uint64(data[:8])
 		data = data[8:]
+	} else {
+		return wireDecodeError
 	}
+	if len(data) >= 8 {
+		tmp.beacon = binary.BigEndian.Uint64(data[:8])
+		data = data[8:]
+	} else {
+		return wireDecodeError
+	}
+
 	if !wireChopPath(&tmp.path, &data) {
 		return wireDecodeError
 	} else if len(data) != 0 {
