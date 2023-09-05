@@ -682,6 +682,7 @@ func (t *dhtree) _getLabel() treeLabel {
 	label.domain = t.core.crypto.domain
 	label.root = t.self.root
 	label.seq = t.self.seq
+	label.beacon = t.self.beacon
 	for _, hop := range t.self.hops {
 		label.path = append(label.path, hop.port)
 	}
