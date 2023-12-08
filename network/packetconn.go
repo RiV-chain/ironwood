@@ -19,8 +19,9 @@ func _type_asserts_() {
 type PacketConn struct {
 	actor        phony.Inbox
 	core         *core
-	recv         chan *dhtTraffic //read buffer
-	oobHandler   func(types.Domain, types.Domain, []byte)
+	recv         chan *traffic //read buffer
+	recvReady    uint64
+	recvq        packetQueue
 	readDeadline *deadline
 	closeMutex   sync.Mutex
 	closed       chan struct{}
@@ -28,9 +29,9 @@ type PacketConn struct {
 }
 
 // NewPacketConn returns a *PacketConn struct which implements the types.PacketConn interface.
-func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain) (*PacketConn, error) {
+func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain, options ...Option) (*PacketConn, error) {
 	c := new(core)
-	if err := c.init(secret, domain); err != nil {
+	if err := c.init(secret, domain, options...); err != nil {
 		return nil, err
 	}
 	return &c.pconn, nil
@@ -38,47 +39,32 @@ func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain) (*PacketConn,
 
 func (pc *PacketConn) init(c *core) {
 	pc.core = c
-	pc.recv = make(chan *dhtTraffic, 1)
+	pc.recv = make(chan *traffic, 1)
 	pc.readDeadline = newDeadline()
 	pc.closed = make(chan struct{})
 	pc.Debug.init(c)
 }
 
-var dhtTrafficPool = sync.Pool{
-	New: func() interface{} {
-		return &dhtTraffic{
-			payload: make([]byte, 0, 65535),
-		}
-	},
-}
-
-func getDHTTraffic() *dhtTraffic {
-	d := dhtTrafficPool.Get().(*dhtTraffic)
-	d.kind = wireDummy
-	d.source = initDomain()
-	d.dest = initDomain()
-	d.payload = d.payload[:0]
-	return d
-}
-
 // ReadFrom fulfills the net.PacketConn interface, with a types.Addr returned as the from address.
 // Note that failing to call ReadFrom may cause the connection to block and/or leak memory.
 func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
-	var tr *dhtTraffic
+	var tr *traffic
+	pc.doPop()
 	select {
 	case <-pc.closed:
-		return 0, nil, errors.New("closed")
+		return 0, nil, types.ErrClosed
 	case <-pc.readDeadline.getCancel():
-		return 0, nil, errors.New("deadline exceeded")
+		return 0, nil, types.ErrTimeout
 	case tr = <-pc.recv:
-		defer dhtTrafficPool.Put(tr)
 	}
 	copy(p, tr.payload)
 	n = len(tr.payload)
 	if len(p) < len(tr.payload) {
 		n = len(p)
 	}
-	from = tr.source.addr()
+	fromKey := domain(tr.source) // copy, since tr is going back in the pool
+	from = fromKey.addr()
+	freeTraffic(tr)
 	return
 }
 
@@ -86,26 +72,26 @@ func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
 func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	select {
 	case <-pc.closed:
-		return 0, errors.New("closed")
+		return 0, types.ErrClosed
 	default:
 	}
 	if _, ok := addr.(types.Addr); !ok {
-		return 0, errors.New("incorrect address type, expected types.Addr")
+		return 0, types.ErrBadAddress
 	}
 	dest := addr.(types.Addr)
 	destDomain := domain(dest)
 	if len(destDomain.Key) != publicKeySize {
-		return 0, errors.New("incorrect key length")
+		return 0, types.ErrBadAddress
 	}
 	if uint64(len(p)) > pc.MTU() {
-		return 0, errors.New("oversized message")
+		return 0, types.ErrOversizedMessage
 	}
-	tr := getDHTTraffic()
+	tr := allocTraffic()
 	tr.source = pc.core.crypto.domain
 	tr.dest = destDomain
-	tr.kind = wireTrafficStandard
+	tr.watermark = ^uint64(0)
 	tr.payload = append(tr.payload[:0], p...)
-	pc.core.dhtree.sendTraffic(nil, tr)
+	pc.core.router.sendTraffic(tr)
 	return len(p), nil
 }
 
@@ -115,25 +101,18 @@ func (pc *PacketConn) Close() error {
 	defer pc.closeMutex.Unlock()
 	select {
 	case <-pc.closed:
-		return errors.New("closed")
+		return types.ErrClosed
 	default:
 	}
 	close(pc.closed)
 	phony.Block(&pc.core.peers, func() {
-		for _, p := range pc.core.peers.peers {
-			p.conn.Close()
+		for _, ps := range pc.core.peers.peers {
+			for p := range ps {
+				p.conn.Close()
+			}
 		}
 	})
-	phony.Block(&pc.core.dhtree, func() {
-		if pc.core.dhtree.btimer != nil {
-			pc.core.dhtree.btimer.Stop()
-			pc.core.dhtree.btimer = nil
-		}
-		if pc.core.dhtree.stimer != nil {
-			pc.core.dhtree.stimer.Stop()
-			pc.core.dhtree.stimer = nil
-		}
-	})
+	phony.Block(&pc.core.router, pc.core.router._shutdown)
 	return nil
 }
 
@@ -170,7 +149,7 @@ func (pc *PacketConn) SetWriteDeadline(t time.Time) error {
 func (pc *PacketConn) HandleConn(domain_ types.Domain, conn net.Conn, prio uint8) error {
 	defer conn.Close()
 	if len(domain_.Key) != publicKeySize {
-		return errors.New("incorrect key length")
+		return types.ErrBadKey
 	}
 	domain := domain(domain_)
 	if pc.core.crypto.domain.equal(domain) {
@@ -181,47 +160,9 @@ func (pc *PacketConn) HandleConn(domain_ types.Domain, conn net.Conn, prio uint8
 		return err
 	}
 	err = p.handler()
-	if e := pc.core.peers.removePeer(p.port); e != nil {
+	if e := pc.core.peers.removePeer(p); e != nil {
 		return e
 	}
-	return err
-}
-
-// SendOutOfBand sends some out-of-band data to a key.
-// The data will be forwarded towards the destination key as far as possible, and then handled by the out-of-band handler of the terminal node.
-// This could be used to do e.g. key discovery based on an incomplete key, or to implement application-specific helpers for debugging and analytics.
-func (pc *PacketConn) SendOutOfBand(toDomain types.Domain, data []byte) error {
-	select {
-	case <-pc.closed:
-		return errors.New("closed")
-	default:
-	}
-	if len(toDomain.Key) != publicKeySize {
-		return errors.New("incorrect address length")
-	}
-	var tr dhtTraffic
-	tr.source = pc.core.crypto.domain
-	tr.dest = domain(toDomain)
-	tr.kind = wireTrafficOutOfBand
-	tr.payload = append(tr.payload, data...)
-	pc.core.dhtree.sendTraffic(nil, &tr)
-	return nil
-}
-
-// SetOutOfBandHandler sets a function to handle out-of-band data.
-// This function will be called every time out-of-band data is received.
-// If no handler has been set, then any received out-of-band data is dropped.
-func (pc *PacketConn) SetOutOfBandHandler(handler func(fromDomain, toDomain types.Domain, data []byte)) error {
-	var err error
-	phony.Block(&pc.actor, func() {
-		select {
-		case <-pc.closed:
-			err = errors.New("closed")
-			return
-		default:
-		}
-		pc.oobHandler = handler
-	})
 	return err
 }
 
@@ -244,46 +185,48 @@ func (pc *PacketConn) PrivateKey() ed25519.PrivateKey {
 
 // MTU returns the maximum transmission unit of the PacketConn, i.e. maximum safe message size to send over the network.
 func (pc *PacketConn) MTU() uint64 {
-	const maxPeerMessageSize = 65535
-	const messageTypeSize = 1
-	const rootSeqSize = 8
-	const treeUpdateOverhead = messageTypeSize + publicKeySize + rootSeqSize
-	const maxPortSize = 10 // maximum vuint size in bytes
-	const treeHopSize = publicKeySize + maxPortSize + signatureSize
-	const maxHops = (maxPeerMessageSize - treeUpdateOverhead) / treeHopSize
-	const maxPathBytes = 2 * maxPortSize * maxHops // to the root and back
-	const pathTrafficOverhead = messageTypeSize + maxPathBytes + publicKeySize + publicKeySize + messageTypeSize
-	const MTU = maxPeerMessageSize - pathTrafficOverhead
-	return MTU
+	var tr traffic
+	tr.watermark = ^uint64(0)
+	overhead := uint64(tr.size()) + 1 // 1 byte type overhead
+	// TODO extra padding for source/destination paths... but that would imply a max path length...
+	return pc.core.config.peerMaxMessageSize - overhead
 }
 
-func (pc *PacketConn) handleTraffic(tr *dhtTraffic) {
+func (pc *PacketConn) handleTraffic(from phony.Actor, tr *traffic) {
+	// Note: if there are multiple concurrent ReadFrom calls, packets can be returned out-of-order at the channel level
+	// But concurrent reads can always do things out of order, so that probaby doesn't matter...
+	pc.actor.Act(from, func() {
+		if !tr.dest.publicKey().equal(pc.core.crypto.publicKey) {
+			// Wrong key, do nothing
+		} else if pc.recvReady > 0 {
+			// Send immediately
+			select {
+			case pc.recv <- tr:
+				pc.recvReady -= 1
+			case <-pc.closed:
+			}
+		} else {
+			if info, ok := pc.recvq.peek(); ok && time.Since(info.time) > 25*time.Millisecond {
+				// The queue already has a significant delay
+				// Drop the oldest packet from the larget queue to make room
+				pc.recvq.drop()
+			}
+			pc.recvq.push(tr)
+		}
+	})
+}
+
+func (pc *PacketConn) doPop() {
 	pc.actor.Act(nil, func() {
-		switch tr.kind {
-		case wireTrafficDummy:
-			// Drop the traffic
-			dhtTrafficPool.Put(tr)
-		case wireTrafficStandard:
-			//wire traffic by Domain name destination. See Domain.Equal method.
-			if tr.dest.equal(pc.core.crypto.domain) {
-				select {
-				case pc.recv <- tr:
-				case <-pc.closed:
-					dhtTrafficPool.Put(tr)
-				}
-			} else {
-				dhtTrafficPool.Put(tr)
+		if info, ok := pc.recvq.pop(); ok {
+			select {
+			case pc.recv <- info.packet.(*traffic):
+			case <-pc.closed:
+			default:
+				panic("this should never happen")
 			}
-		case wireTrafficOutOfBand:
-			if pc.oobHandler != nil {
-				msg := append([]byte(nil), tr.payload[:]...)
-				// TODO something smarter than spamming goroutines
-				go pc.oobHandler(types.Domain(tr.source), types.Domain(tr.dest), msg)
-			}
-			dhtTrafficPool.Put(tr)
-		default:
-			// Drop the traffic
-			dhtTrafficPool.Put(tr)
+		} else {
+			pc.recvReady += 1
 		}
 	})
 }
@@ -331,4 +274,12 @@ func (d *deadline) getCancel() chan struct{} {
 	defer d.m.Unlock()
 	ch := d.cancel
 	return ch
+}
+
+func (pc *PacketConn) SendLookup(key ed25519.PublicKey) {
+	var k publicKey
+	copy(k[:], key)
+	pc.core.router.Act(nil, func() {
+		pc.core.router.pathfinder._rumorSendLookup(k)
+	})
 }

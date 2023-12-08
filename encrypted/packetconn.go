@@ -2,7 +2,6 @@ package encrypted
 
 import (
 	"crypto/ed25519"
-	"errors"
 	"net"
 
 	"github.com/Arceliar/phony"
@@ -22,7 +21,7 @@ type PacketConn struct {
 }
 
 // NewPacketConn returns a *PacketConn struct which implements the types.PacketConn interface.
-func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain) (*PacketConn, error) {
+func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain, options ...network.Option) (*PacketConn, error) {
 	npc, err := network.NewPacketConn(secret, domain)
 	if err != nil {
 		return nil, err
@@ -49,27 +48,25 @@ func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
 		n = len(p)
 	}
 	copy(p, info.data[:n])
+	freeBytes(info.data)
 	return
 }
 
 func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	select {
 	case <-pc.network.closed:
-		return 0, errors.New("closed")
+		return 0, types.ErrClosed
 	default:
 	}
 	dest, ok := addr.(types.Addr)
 	destDomain := types.Domain(dest)
 	if !ok || len(destDomain.Key) != edPubSize {
-		return 0, errors.New("bad destination key length")
+		return 0, types.ErrBadAddress
 	}
 	if uint64(len(p)) > pc.MTU() {
-		return 0, errors.New("oversized message")
+		return 0, types.ErrOversizedMessage
 	}
-	n = len(p)
-	buf := pc.sessions.pool.Get().([]byte)[:0]
-	buf = append(buf, p...)
-	pc.sessions.writeTo(destDomain, buf)
+	pc.sessions.writeTo(destDomain, append(allocBytes(0), p...))
 	return
 }
 

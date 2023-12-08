@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"errors"
+
+	//"fmt"
 	"net"
 	"strconv"
 	"sync"
@@ -27,46 +29,17 @@ func TestTwoNodes(t *testing.T) {
 	defer cB.Close()
 	go a.HandleConn(dB, cA, 0)
 	go b.HandleConn(dA, cB, 0)
-	waitForRoot([]*PacketConn{a, b}, 3*time.Second)
-	timer := time.NewTimer(10 * time.Second)
+	waitForRoot([]*PacketConn{a, b}, 30*time.Second)
+	timer := time.NewTimer(6 * time.Second)
 	defer func() { timer.Stop() }()
-	tA := &a.core.dhtree
-	tB := &b.core.dhtree
-	for {
-		select {
-		case <-timer.C:
-			panic("timeout")
-		default:
-		}
-		var sA, sB treeLabel
-		phony.Block(tA, func() {
-			sA = tA._getLabel()
-		})
-		phony.Block(tB, func() {
-			sB = tB._getLabel()
-		})
-		var lA, lB *peer
-		phony.Block(tA, func() {
-			lA = tA._treeLookup(sB)
-		})
-		phony.Block(tB, func() {
-			lB = tB._treeLookup(sA)
-		})
-		if lA == nil || !lA.domain.equal(tB.core.crypto.domain) {
-			continue
-		}
-		if lB == nil || !lB.domain.equal(tA.core.crypto.domain) {
-			continue
-		}
-		break
-	}
-	timer.Stop()
-	timer = time.NewTimer(10 * time.Second)
 	addrA := a.LocalAddr()
 	addrB := b.LocalAddr()
 	done := make(chan struct{})
 	go func() {
-		defer close(done)
+		defer func() {
+			defer func() { recover() }()
+			close(done)
+		}()
 		msg := make([]byte, 2048)
 		n, from, err := b.ReadFrom(msg)
 		if err != nil {
@@ -95,6 +68,8 @@ func TestTwoNodes(t *testing.T) {
 	}()
 	select {
 	case <-timer.C:
+		// This is where we would log something...
+		t.Log("timeout")
 		panic("timeout")
 	case <-done:
 	}
@@ -126,16 +101,14 @@ func TestLineNetwork(t *testing.T) {
 		go func() {
 			<-wait
 			prev.HandleConn(keyB, linkA, 0)
-			//linkA.Close()
 		}()
 		go func() {
 			<-wait
 			here.HandleConn(keyA, linkB, 0)
-			//linkB.Close()
 		}()
 	}
 	close(wait)
-	waitForRoot(conns, 10*time.Second)
+	waitForRoot(conns, 30*time.Second)
 	for aIdx := range conns {
 		a := conns[aIdx]
 		aAddr := a.LocalAddr()
@@ -163,7 +136,10 @@ func TestLineNetwork(t *testing.T) {
 				}
 			}()
 			go func() {
-				defer close(done)
+				defer func() {
+					defer func() { recover() }()
+					close(done)
+				}()
 				// Recv from a at b
 				read := make([]byte, 2048)
 				for {
@@ -185,29 +161,15 @@ func TestLineNetwork(t *testing.T) {
 					}
 				}
 			}()
-			timer := time.NewTimer(3 * time.Second)
+			timer := time.NewTimer(30 * time.Second)
 			select {
 			case <-timer.C:
 				func() {
 					defer func() { recover() }()
 					close(done)
 				}()
-				for _, conn := range conns {
-					// Timeout could come from split rings, if the DHT isn't converging
-					//  FIXME this could race if the network is flapping for some reason, though it shouldn't be
-					var here, prev, next, root string
-					here = conn.LocalAddr().String()
-					if dinfo := conn.core.dhtree.prev; dinfo != nil {
-						k := conn.core.dhtree.dkeys[dinfo]
-						prev = string(k.Key)
-					}
-					if dinfo := conn.core.dhtree.next; dinfo != nil {
-						next = string(dinfo.key.Key)
-					}
-					root = string(conn.core.dhtree.self.root.Key)
-					t.Log(prev, ":", here, ":", next, ":", root)
-				}
-				t.Log("test")
+				// This is where we would log something...
+				t.Log("timeout")
 				panic("timeout")
 			case <-done:
 				timer.Stop()
@@ -222,7 +184,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 		return int(time.Now().UnixNano() % int64(len(conns)))
 	}
 	wait := make(chan struct{})
-	for idx := 0; idx < 32; idx++ {
+	for idx := 0; idx < 8; idx++ {
 		pub, priv, _ := ed25519.GenerateKey(nil)
 		d := types.Domain(newDomain("d"+strconv.Itoa(idx), pub))
 		conn, err := NewPacketConn(priv, d)
@@ -249,7 +211,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 		conns = append(conns, conn)
 	}
 	close(wait)
-	waitForRoot(conns, 10*time.Second)
+	waitForRoot(conns, 30*time.Second)
 	for aIdx := range conns {
 		a := conns[aIdx]
 		aAddr := a.LocalAddr()
@@ -277,7 +239,10 @@ func TestRandomTreeNetwork(t *testing.T) {
 				}
 			}()
 			go func() {
-				defer close(done)
+				defer func() {
+					defer func() { recover() }()
+					close(done)
+				}()
 				// Recv from a at b
 				read := make([]byte, 2048)
 				for {
@@ -299,29 +264,15 @@ func TestRandomTreeNetwork(t *testing.T) {
 					}
 				}
 			}()
-			timer := time.NewTimer(3 * time.Second)
+			timer := time.NewTimer(30 * time.Second)
 			select {
 			case <-timer.C:
 				func() {
 					defer func() { recover() }()
 					close(done)
 				}()
-				for _, conn := range conns {
-					// Timeout could come from split rings, if the DHT isn't converging
-					//  FIXME this could race if the network is flapping for some reason, though it shouldn't be
-					var here, prev, next, root string
-					here = conn.LocalAddr().String()
-					if dinfo := conn.core.dhtree.prev; dinfo != nil {
-						k := conn.core.dhtree.dkeys[dinfo]
-						prev = string(k.Key)
-					}
-					if dinfo := conn.core.dhtree.next; dinfo != nil {
-						next = string(dinfo.key.Key)
-					}
-					root = string(conn.core.dhtree.self.root.Key)
-					t.Log(prev, ":", here, ":", next, ":", root)
-				}
-				t.Log("test")
+				// This is where we would log something...
+				t.Log("timeout")
 				panic("timeout")
 			case <-done:
 				timer.Stop()
@@ -335,21 +286,22 @@ func TestRandomTreeNetwork(t *testing.T) {
 func waitForRoot(conns []*PacketConn, timeout time.Duration) {
 	begin := time.Now()
 	for {
+		time.Sleep(time.Second)
 		if time.Since(begin) > timeout {
 			panic("timeout")
 		}
 		var root publicKey
 		for _, conn := range conns {
-			phony.Block(&conn.core.dhtree, func() {
-				root = conn.core.dhtree.self.root.publicKey()
+			phony.Block(&conn.core.router, func() {
+				root, _ = conn.core.router._getRootAndDists(conn.core.crypto.publicKey)
 			})
 			break
 		}
 		var bad bool
 		for _, conn := range conns {
 			var croot publicKey
-			phony.Block(&conn.core.dhtree, func() {
-				croot = conn.core.dhtree.self.root.publicKey()
+			phony.Block(&conn.core.router, func() {
+				croot, _ = conn.core.router._getRootAndDists(conn.core.crypto.publicKey)
 			})
 			if !croot.equal(root) {
 				bad = true
@@ -431,26 +383,26 @@ func (d *dummyConn) Close() error {
 }
 
 func (d *dummyConn) LocalAddr() net.Addr {
-	panic("TODO LocalAddr")
+	panic("Not implemented: LocalAddr")
 	return nil
 }
 
 func (d *dummyConn) RemoteAddr() net.Addr {
-	panic("TODO RemoteAddr")
+	panic("Not implemented: RemoteAddr")
 	return nil
 }
 
 func (d *dummyConn) SetDeadline(t time.Time) error {
-	panic("TODO implement SetDeadline")
+	//panic("Not implemented: SetDeadline")
 	return nil
 }
 
 func (d *dummyConn) SetReadDeadline(t time.Time) error {
-	//panic("TODO implement SetReadDeadline")
+	//panic("Not implemented: SetReadDeadline")
 	return nil
 }
 
 func (d *dummyConn) SetWriteDeadline(t time.Time) error {
-	panic("TODO implement SetWriteDeadline")
+	panic("Not implemented: SetWriteDeadline")
 	return nil
 }

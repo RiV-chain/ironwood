@@ -2,7 +2,6 @@ package encrypted
 
 import (
 	"encoding/binary"
-	"sync"
 	"time"
 
 	"github.com/Arceliar/phony"
@@ -41,16 +40,12 @@ type sessionManager struct {
 	pc       *PacketConn
 	sessions map[edPub]*sessionInfo
 	buffers  map[edPub]*sessionBuffer
-	pool     sync.Pool
 }
 
 func (mgr *sessionManager) init(pc *PacketConn) {
 	mgr.pc = pc
 	mgr.sessions = make(map[edPub]*sessionInfo)
 	mgr.buffers = make(map[edPub]*sessionBuffer)
-	mgr.pool.New = func() interface{} {
-		return make([]byte, 0, sessionTrafficOverhead+pc.MTU())
-	}
 }
 
 func (mgr *sessionManager) _newSession(domain types.Domain, recv, send boxPub, seq uint64) *sessionInfo {
@@ -92,11 +87,13 @@ func (mgr *sessionManager) handleData(from phony.Actor, domain types.Domain, dat
 			if init.decrypt(&mgr.pc.secretBox, (*edPub)(domain.Key), data) {
 				mgr._handleInit(domain, init)
 			}
+			freeBytes(data)
 		case sessionTypeAck:
 			ack := new(sessionAck)
 			if ack.decrypt(&mgr.pc.secretBox, (*edPub)(domain.Key), data) {
 				mgr._handleAck(domain, ack)
 			}
+			freeBytes(data)
 		case sessionTypeTraffic:
 			mgr._handleTraffic(domain, data)
 		default:
@@ -295,8 +292,8 @@ func (info *sessionInfo) _handleUpdate(init *sessionInit) {
 func (info *sessionInfo) doSend(from phony.Actor, msg []byte) {
 	// TODO? some worker pool to multi-thread this
 	info.Act(from, func() {
-		defer info.mgr.pool.Put(msg[:0]) // nolint:staticcheck
-		info.sendNonce += 1              // Advance the nonce before anything else
+		defer freeBytes(msg)
+		info.sendNonce += 1 // Advance the nonce before anything else
 		if info.sendNonce == 0 {
 			// Nonce overflowed, so rotate keys
 			info.recvPub, info.recvPriv = info.sendPub, info.sendPriv
@@ -305,8 +302,8 @@ func (info *sessionInfo) doSend(from phony.Actor, msg []byte) {
 			info.localKeySeq++
 			info._fixShared(0, 0)
 		}
-		bs := info.mgr.pool.Get().([]byte)[:sessionTrafficOverhead+len(msg)]
-		defer info.mgr.pool.Put(bs[:0]) // nolint:staticcheck
+		bs := allocBytes(sessionTrafficOverhead + len(msg))
+		defer freeBytes(bs)
 		bs[0] = sessionTypeTraffic
 		offset := 1
 		offset += binary.PutUvarint(bs[offset:], info.localKeySeq)
@@ -315,11 +312,11 @@ func (info *sessionInfo) doSend(from phony.Actor, msg []byte) {
 		bs = bs[:offset]
 		// We need to include info.nextPub below the layer of encryption
 		// That way the remote side knows it's us when we send from it later...
-		tmp := info.mgr.pool.Get().([]byte)[:0]
+		tmp := allocBytes(len(info.nextPub) + len(msg))[:0]
 		tmp = append(tmp, info.nextPub[:]...)
 		tmp = append(tmp, msg...)
 		bs = boxSeal(bs, tmp, info.sendNonce, &info.sendShared)
-		info.mgr.pool.Put(tmp[:0]) // nolint:staticcheck
+		freeBytes(tmp)
 		// send
 		info.mgr.pc.PacketConn.WriteTo(bs, types.Addr(info.domain))
 		info.tx += uint64(len(msg))
@@ -330,6 +327,8 @@ func (info *sessionInfo) doSend(from phony.Actor, msg []byte) {
 func (info *sessionInfo) doRecv(from phony.Actor, msg []byte) {
 	// TODO? some worker pool to multi-thread this
 	info.Act(from, func() {
+		orig := msg
+		defer freeBytes(orig)
 		if len(msg) < sessionTrafficOverheadMin || msg[0] != sessionTypeTraffic {
 			return
 		}
@@ -411,10 +410,12 @@ func (info *sessionInfo) doRecv(from phony.Actor, msg []byte) {
 			return
 		}
 		// Decrypt and handle packet
-		if unboxed, ok := boxOpen(nil, msg, nonce, sharedKey); ok {
+		unboxed, ok := allocBytes(0), false
+		defer freeBytes(unboxed)
+		if unboxed, ok = boxOpen(unboxed, msg, nonce, sharedKey); ok {
 			var key boxPub
 			copy(key[:], unboxed)
-			msg = unboxed[len(key):]
+			msg := append(allocBytes(0), unboxed[len(key):]...)
 			info.mgr.pc.network.recv(info, msg)
 			// Misc remaining followup work
 			if info.rotated.IsZero() || time.Since(info.rotated) > time.Minute {

@@ -2,7 +2,6 @@ package signed
 
 import (
 	"crypto/ed25519"
-	"errors"
 	"net"
 
 	"github.com/Arceliar/ironwood/network"
@@ -16,8 +15,8 @@ type PacketConn struct {
 }
 
 // NewPacketConn returns a *PacketConn struct which implements the types.PacketConn interface.
-func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain) (*PacketConn, error) {
-	pc, err := network.NewPacketConn(secret, domain)
+func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain, options ...network.Option) (*PacketConn, error) {
+	pc, err := network.NewPacketConn(secret, domain, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +43,7 @@ func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	switch addr.(type) {
 	case types.Addr:
 	default:
-		return 0, errors.New("wrong address type")
+		return 0, types.ErrBadAddress
 	}
 	toKey := types.Domain(addr.(types.Addr)).Key
 	msg := pc.sign(nil, toKey, p)

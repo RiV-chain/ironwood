@@ -49,12 +49,28 @@ func (publicKey publicKey) equal(comparedKey publicKey) bool {
 	return publicKey == comparedKey
 }
 
+func (publicKey publicKey) verify(message []byte, sig *signature) bool {
+	return ed25519.Verify(publicKey[:], message, sig[:])
+}
+
 func (domain domain) verify(message []byte, sig *signature) bool {
 	return ed25519.Verify(domain.Key, message, sig[:])
 }
 
 func (domain domain) equal(comparedDomain domain) bool {
 	return types.Domain(domain).Equal(types.Domain(comparedDomain))
+}
+
+func (key publicKey) less(comparedKey publicKey) bool {
+	for idx := range key {
+		switch {
+		case key[idx] < comparedKey[idx]:
+			return true
+		case key[idx] > comparedKey[idx]:
+			return false
+		}
+	}
+	return false
 }
 
 func (domain domain) addr() types.Addr {
@@ -71,6 +87,7 @@ func (domain domain) name() name {
 
 func (c *crypto) init(secret ed25519.PrivateKey, domain_ types.Domain) {
 	copy(c.privateKey[:], secret)
+	copy(c.publicKey[:], secret.Public().(ed25519.PublicKey))
 	c.domain = domain(domain_)
 }
 
@@ -80,24 +97,6 @@ func (c *crypto) init(secret ed25519.PrivateKey, domain_ types.Domain) {
 //func (domain1 domain) treeLess(domain2 domain) bool {
 //	return domain1.publicKey().treeLess(domain2.publicKey())
 //}
-
-func (first domain) dhtOrdered(second, third domain) bool {
-	return first.treeLess(second) && second.treeLess(third)
-}
-
-/*
-func (key1 publicKey) treeLess(key2 publicKey) bool {
-	for idx := range key1 {
-		switch {
-		case key1[idx] < key2[idx]:
-			return true
-		case key1[idx] > key2[idx]:
-			return false
-		}
-	}
-	return false
-}
-*/
 
 func (domain1 domain) treeLess(domain2 domain) bool {
 	for idx := range domain1.Name {
@@ -121,4 +120,9 @@ func (key1 name) treeLess(key2 name) bool {
 		}
 	}
 	return false
+}
+
+func (key publicKey) toEd() ed25519.PublicKey {
+	k := key
+	return k[:]
 }

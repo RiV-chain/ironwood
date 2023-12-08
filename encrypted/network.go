@@ -66,7 +66,7 @@ func (m *netManager) read() {
 				default:
 				}
 			} else {
-				msg := make([]byte, n)
+				msg := allocBytes(n)
 				copy(msg, buf[:n])
 				fromDomain := types.Domain(from.(types.Addr))
 				m.pc.sessions.handleData(m, fromDomain, msg)
