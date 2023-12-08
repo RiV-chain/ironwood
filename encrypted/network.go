@@ -1,9 +1,8 @@
 package encrypted
 
 import (
-	"github.com/Arceliar/phony"
-
 	"github.com/Arceliar/ironwood/types"
+	"github.com/Arceliar/phony"
 )
 
 const netBufferSize = 128 * 1024
@@ -18,7 +17,7 @@ type netManager struct {
 }
 
 type netReadInfo struct {
-	from edPub
+	from types.Domain
 	data []byte
 	err  error
 }
@@ -32,7 +31,7 @@ func (m *netManager) init(pc *PacketConn) {
 func (m *netManager) recv(from *sessionInfo, data []byte) {
 	m.reader.Act(from, func() {
 		select {
-		case m.readCh <- netReadInfo{from: from.ed, data: data}:
+		case m.readCh <- netReadInfo{from: from.domain, data: data}:
 		case <-m.closed:
 		}
 	})
@@ -69,9 +68,8 @@ func (m *netManager) read() {
 			} else {
 				msg := allocBytes(n)
 				copy(msg, buf[:n])
-				var fromKey edPub
-				copy(fromKey[:], from.(types.Addr))
-				m.pc.sessions.handleData(m, &fromKey, msg)
+				fromDomain := types.Domain(from.(types.Addr))
+				m.pc.sessions.handleData(m, fromDomain, msg)
 				m.Act(nil, rl) // continue to loop
 			}
 		}

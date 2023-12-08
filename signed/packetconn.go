@@ -15,8 +15,8 @@ type PacketConn struct {
 }
 
 // NewPacketConn returns a *PacketConn struct which implements the types.PacketConn interface.
-func NewPacketConn(secret ed25519.PrivateKey, options ...network.Option) (*PacketConn, error) {
-	pc, err := network.NewPacketConn(secret, options...)
+func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain, options ...network.Option) (*PacketConn, error) {
+	pc, err := network.NewPacketConn(secret, domain, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +29,7 @@ func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
 		if n, from, err = pc.PacketConn.ReadFrom(p); err != nil {
 			return
 		}
-		fromKey := ed25519.PublicKey(from.(types.Addr))
+		fromKey := types.Domain(from.(types.Addr)).Key
 		msg, ok := pc.unpack(p[:n], fromKey)
 		if !ok {
 			continue // error?
@@ -45,7 +45,7 @@ func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	default:
 		return 0, types.ErrBadAddress
 	}
-	toKey := ed25519.PublicKey(addr.(types.Addr))
+	toKey := types.Domain(addr.(types.Addr)).Key
 	msg := pc.sign(nil, toKey, p)
 	n, err = pc.PacketConn.WriteTo(msg, addr)
 	n -= len(msg) - len(p) // subtract overhead

@@ -26,6 +26,15 @@ func wireChopSlice(out []byte, data *[]byte) bool {
 	return true
 }
 
+/*func wireChopSlice(out []byte, data *[]byte) bool {
+	if len(*data) < len(out) {
+		return false
+	}
+	copy(out, (*data)[:len(out)]) // Copy only the required bytes from *data
+	*data = (*data)[len(out):]
+	return true
+}*/
+
 func wireChopBytes(out *[]byte, data *[]byte, size int) bool {
 	if len(*data) < size {
 		return false

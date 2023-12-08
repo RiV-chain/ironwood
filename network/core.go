@@ -1,6 +1,10 @@
 package network
 
-import "crypto/ed25519"
+import (
+	"crypto/ed25519"
+
+	"github.com/Arceliar/ironwood/types"
+)
 
 type core struct {
 	config config     // application-level configuration, must be the same on all nodes in a network
@@ -10,12 +14,12 @@ type core struct {
 	pconn  PacketConn // net.PacketConn-like interface
 }
 
-func (c *core) init(secret ed25519.PrivateKey, opts ...Option) error {
+func (c *core) init(secret ed25519.PrivateKey, domain types.Domain, opts ...Option) error {
 	opts = append([]Option{configDefaults()}, opts...)
 	for _, opt := range opts {
 		opt(&c.config)
 	}
-	c.crypto.init(secret)
+	c.crypto.init(secret, domain)
 	c.router.init(c)
 	c.peers.init(c)
 	c.pconn.init(c)

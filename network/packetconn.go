@@ -2,7 +2,7 @@ package network
 
 import (
 	"crypto/ed25519"
-	"fmt"
+	"errors"
 	"net"
 	"sync"
 	"time"
@@ -29,9 +29,9 @@ type PacketConn struct {
 }
 
 // NewPacketConn returns a *PacketConn struct which implements the types.PacketConn interface.
-func NewPacketConn(secret ed25519.PrivateKey, options ...Option) (*PacketConn, error) {
+func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain, options ...Option) (*PacketConn, error) {
 	c := new(core)
-	if err := c.init(secret, options...); err != nil {
+	if err := c.init(secret, domain, options...); err != nil {
 		return nil, err
 	}
 	return &c.pconn, nil
@@ -62,7 +62,7 @@ func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
 	if len(p) < len(tr.payload) {
 		n = len(p)
 	}
-	fromKey := tr.source // copy, since tr is going back in the pool
+	fromKey := domain(tr.source) // copy, since tr is going back in the pool
 	from = fromKey.addr()
 	freeTraffic(tr)
 	return
@@ -79,17 +79,18 @@ func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		return 0, types.ErrBadAddress
 	}
 	dest := addr.(types.Addr)
-	if len(dest) != publicKeySize {
+	destDomain := domain(dest)
+	if len(destDomain.Key) != publicKeySize {
 		return 0, types.ErrBadAddress
 	}
 	if uint64(len(p)) > pc.MTU() {
 		return 0, types.ErrOversizedMessage
 	}
 	tr := allocTraffic()
-	tr.source = pc.core.crypto.publicKey
-	copy(tr.dest[:], dest)
+	tr.source = pc.core.crypto.domain
+	tr.dest = destDomain
 	tr.watermark = ^uint64(0)
-	tr.payload = append(tr.payload, p...)
+	tr.payload = append(tr.payload[:0], p...)
 	pc.core.router.sendTraffic(tr)
 	return len(p), nil
 }
@@ -115,9 +116,9 @@ func (pc *PacketConn) Close() error {
 	return nil
 }
 
-// LocalAddr returns a types.Addr of the ed25519.PublicKey for this PacketConn.
+// LocalAddr returns a types.Addr of the Domain for this PacketConn.
 func (pc *PacketConn) LocalAddr() net.Addr {
-	return pc.core.crypto.publicKey.addr()
+	return pc.core.crypto.domain.addr()
 }
 
 // SetDeadline fulfills the net.PacketConn interface. Note that only read deadlines are affected.
@@ -145,21 +146,16 @@ func (pc *PacketConn) SetWriteDeadline(t time.Time) error {
 // This function blocks while the net.Conn is in use, and returns an error if any occurs.
 // This function returns (almost) immediately if PacketConn.Close() is called.
 // In all cases, the net.Conn is closed before returning.
-func (pc *PacketConn) HandleConn(key ed25519.PublicKey, conn net.Conn, prio uint8) error {
+func (pc *PacketConn) HandleConn(domain_ types.Domain, conn net.Conn, prio uint8) error {
 	defer conn.Close()
-	if len(key) != publicKeySize {
+	if len(domain_.Key) != publicKeySize {
 		return types.ErrBadKey
 	}
-	var pk publicKey
-	copy(pk[:], key)
-	if pc.core.crypto.publicKey.equal(pk) {
-		return fmt.Errorf("%w: Expected %s, Found %s",
-			types.ErrBadKey,
-			pc.core.crypto.publicKey.addr().String(),
-			pk.addr().String(),
-		)
+	domain := domain(domain_)
+	if pc.core.crypto.domain.equal(domain) {
+		return errors.New("attempted to connect to self")
 	}
-	p, err := pc.core.peers.addPeer(pk, conn, prio)
+	p, err := pc.core.peers.addPeer(domain, conn, prio)
 	if err != nil {
 		return err
 	}
@@ -200,7 +196,7 @@ func (pc *PacketConn) handleTraffic(from phony.Actor, tr *traffic) {
 	// Note: if there are multiple concurrent ReadFrom calls, packets can be returned out-of-order at the channel level
 	// But concurrent reads can always do things out of order, so that probaby doesn't matter...
 	pc.actor.Act(from, func() {
-		if !tr.dest.equal(pc.core.crypto.publicKey) {
+		if !tr.dest.publicKey().equal(pc.core.crypto.publicKey) {
 			// Wrong key, do nothing
 		} else if pc.recvReady > 0 {
 			// Send immediately

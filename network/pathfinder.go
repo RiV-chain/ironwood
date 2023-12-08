@@ -43,10 +43,10 @@ func (pf *pathfinder) _sendLookup(dest publicKey) {
 
 func (pf *pathfinder) handleLookup(p *peer, lookup *pathLookup) {
 	pf.router.Act(p, func() {
-		if !pf.router.blooms._isOnTree(p.key) {
+		if !pf.router.blooms._isOnTree(p.domain.publicKey()) {
 			return
 		}
-		pf._handleLookup(p.key, lookup)
+		pf._handleLookup(p.domain.publicKey(), lookup)
 	})
 }
 
@@ -86,7 +86,7 @@ func (pf *pathfinder) _handleLookup(fromKey publicKey, lookup *pathLookup) {
 
 func (pf *pathfinder) handleNotify(p *peer, notify *pathNotify) {
 	pf.router.Act(p, func() {
-		pf._handleNotify(p.key, notify)
+		pf._handleNotify(p.domain.publicKey(), notify)
 	})
 }
 
@@ -142,7 +142,7 @@ func (pf *pathfinder) _handleNotify(fromKey publicKey, notify *pathNotify) {
 			reqTime: time.Now(),
 			timer:   timer,
 		}
-		if rumor := pf.rumors[xform]; rumor.traffic != nil && rumor.traffic.dest == notify.source {
+		if rumor := pf.rumors[xform]; rumor.traffic != nil && rumor.traffic.dest.publicKey() == notify.source {
 			info.traffic = rumor.traffic
 			rumor.traffic = nil
 			pf.rumors[xform] = rumor
@@ -193,7 +193,7 @@ func (pf *pathfinder) _rumorSendLookup(dest publicKey) {
 
 func (pf *pathfinder) _handleTraffic(tr *traffic) {
 	const cache = pathfinderTrafficCache // TODO make this unconditional, this is just to easily toggle the cache on/off for now
-	if info, isIn := pf.paths[tr.dest]; isIn {
+	if info, isIn := pf.paths[tr.dest.publicKey()]; isIn {
 		tr.path = append(tr.path[:0], info.path...)
 		_, from := pf.router._getRootAndPath(pf.router.core.crypto.publicKey)
 		tr.from = append(tr.from[:0], from...)
@@ -203,13 +203,13 @@ func (pf *pathfinder) _handleTraffic(tr *traffic) {
 			}
 			info.traffic = allocTraffic()
 			info.traffic.copyFrom(tr)
-			pf.paths[tr.dest] = info
+			pf.paths[tr.dest.publicKey()] = info
 		}
 		pf.router.handleTraffic(nil, tr)
 	} else {
-		pf._rumorSendLookup(tr.dest)
+		pf._rumorSendLookup(tr.dest.publicKey())
 		if cache {
-			xform := pf.router.blooms.xKey(tr.dest)
+			xform := pf.router.blooms.xKey(tr.dest.publicKey())
 			if rumor, isIn := pf.rumors[xform]; isIn {
 				if rumor.traffic != nil {
 					freeTraffic(rumor.traffic)
@@ -227,8 +227,8 @@ func (pf *pathfinder) _doBroken(tr *traffic) {
 	broken := pathBroken{
 		path:      append([]peerPort(nil), tr.from...),
 		watermark: ^uint64(0),
-		source:    tr.source,
-		dest:      tr.dest,
+		source:    tr.source.publicKey(),
+		dest:      tr.dest.publicKey(),
 	}
 	pf._handleBroken(&broken)
 }
@@ -281,7 +281,6 @@ type pathInfo struct {
 /*************
  * pathRumor *
  *************/
-
 type pathRumor struct {
 	traffic  *traffic
 	sendTime time.Time   // Time we last sent a rumor (to prevnt spamming)

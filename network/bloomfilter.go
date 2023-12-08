@@ -199,12 +199,12 @@ func (bs *blooms) handleBloom(fromPeer *peer, b *bloom) {
 }
 
 func (bs blooms) _handleBloom(fromPeer *peer, b *bloom) {
-	pbi, isIn := bs.blooms[fromPeer.key]
+	pbi, isIn := bs.blooms[fromPeer.domain.publicKey()]
 	if !isIn {
 		return
 	}
 	pbi.recv = *b
-	bs.blooms[fromPeer.key] = pbi
+	bs.blooms[fromPeer.domain.publicKey()] = pbi
 }
 
 func (bs *blooms) _doMaintenance() {
@@ -259,7 +259,7 @@ func (bs *blooms) _getBloomFor(key publicKey, keepOnes bool) (*bloom, bool) {
 func (bs *blooms) _sendBloom(p *peer) {
 	// Just send whatever our most recently sent bloom is
 	// For new or off-tree nodes, this is the empty bloom filter
-	b := bs.blooms[p.key].send
+	b := bs.blooms[p.domain.publicKey()].send
 	p.sendBloom(bs.router, &b)
 }
 

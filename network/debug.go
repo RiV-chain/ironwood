@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/Arceliar/ironwood/types"
 	"github.com/Arceliar/phony"
 )
 
@@ -16,14 +17,23 @@ func (d *Debug) init(c *core) {
 	d.c = c
 }
 
+type DebugLabelInfo struct {
+	Sig    []byte
+	Domain types.Domain
+	Root   types.Domain
+	Seq    uint64
+	Beacon uint64
+	Path   []uint64
+}
+
 type DebugSelfInfo struct {
 	Key            ed25519.PublicKey
 	RoutingEntries uint64
 }
-
 type DebugPeerInfo struct {
-	Key      ed25519.PublicKey
-	Root     ed25519.PublicKey
+	Domain   types.Domain
+	Root     types.Domain
+	Coords   []uint64
 	Port     uint64
 	Priority uint8
 	RX       uint64
@@ -70,7 +80,7 @@ func (d *Debug) GetPeers() (infos []DebugPeerInfo) {
 			for peer := range peers {
 				var info DebugPeerInfo
 				info.Port = uint64(peer.port)
-				info.Key = append(info.Key[:0], peer.key[:]...)
+				info.Domain = types.Domain(peer.domain)
 				info.Priority = peer.prio
 				info.Conn = peer.conn
 				infos = append(infos, info)

@@ -31,7 +31,7 @@ func (ps *peers) init(c *core) {
 	ps.peers = make(map[publicKey]map[*peer]struct{})
 }
 
-func (ps *peers) addPeer(key publicKey, conn net.Conn, prio uint8) (*peer, error) {
+func (ps *peers) addPeer(domain domain, conn net.Conn, prio uint8) (*peer, error) {
 	var p *peer
 	var err error
 	ps.core.pconn.closeMutex.Lock()
@@ -43,7 +43,7 @@ func (ps *peers) addPeer(key publicKey, conn net.Conn, prio uint8) (*peer, error
 	}
 	phony.Block(ps, func() {
 		var port peerPort
-		if keyPeers, isIn := ps.peers[key]; isIn {
+		if keyPeers, isIn := ps.peers[domain.publicKey()]; isIn {
 			for p := range keyPeers {
 				port = p.port
 				break
@@ -58,13 +58,13 @@ func (ps *peers) addPeer(key publicKey, conn net.Conn, prio uint8) (*peer, error
 				break
 			}
 			ps.ports[port] = struct{}{}
-			ps.peers[key] = make(map[*peer]struct{})
+			ps.peers[domain.publicKey()] = make(map[*peer]struct{})
 		}
 		p = new(peer)
 		p.peers = ps
 		p.conn = conn
 		p.done = make(chan struct{})
-		p.key = key
+		p.domain = domain
 		p.port = port
 		p.prio = prio
 		p.monitor.peer = p
@@ -72,7 +72,7 @@ func (ps *peers) addPeer(key publicKey, conn net.Conn, prio uint8) (*peer, error
 		p.writer.peer = p
 		p.writer.wbuf = bufio.NewWriter(p.conn)
 		p.time = time.Now()
-		ps.peers[p.key][p] = struct{}{}
+		ps.peers[p.domain.publicKey()][p] = struct{}{}
 	})
 	return p, err
 }
@@ -80,13 +80,13 @@ func (ps *peers) addPeer(key publicKey, conn net.Conn, prio uint8) (*peer, error
 func (ps *peers) removePeer(p *peer) error {
 	var err error
 	phony.Block(ps, func() {
-		kps := ps.peers[p.key]
+		kps := ps.peers[p.domain.publicKey()]
 		if _, isIn := kps[p]; !isIn {
 			err = types.ErrPeerNotFound
 		} else {
 			delete(kps, p)
 			if len(kps) == 0 {
-				delete(ps.peers, p.key)
+				delete(ps.peers, p.domain.publicKey())
 				delete(ps.ports, p.port)
 			}
 		}
@@ -99,7 +99,7 @@ type peer struct {
 	peers       *peers
 	conn        net.Conn
 	done        chan struct{}
-	key         publicKey
+	domain      domain
 	port        peerPort
 	prio        uint8
 	queue       packetQueue
@@ -317,7 +317,7 @@ func (p *peer) _handleSigRes(bs []byte) error {
 	if err := res.decode(bs); err != nil {
 		return err
 	}
-	if !res.check(p.peers.core.crypto.publicKey, p.key) {
+	if !res.check(p.peers.core.crypto.publicKey, p.domain.publicKey()) {
 		return types.ErrBadMessage
 	}
 	p.peers.core.router.handleResponse(p, p, res)

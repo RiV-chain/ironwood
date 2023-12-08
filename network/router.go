@@ -114,15 +114,15 @@ func (r *router) _resetCache() {
 func (r *router) addPeer(from phony.Actor, p *peer) {
 	r.Act(from, func() {
 		//r._resetCache()
-		if _, isIn := r.peers[p.key]; !isIn {
-			r.peers[p.key] = make(map[*peer]struct{})
-			r.sent[p.key] = make(map[publicKey]struct{})
-			r.ports[p.port] = p.key
-			r.ancSeqs[p.key] = r.ancSeqCtr
-			r.blooms._addInfo(p.key)
+		if _, isIn := r.peers[p.domain.publicKey()]; !isIn {
+			r.peers[p.domain.publicKey()] = make(map[*peer]struct{})
+			r.sent[p.domain.publicKey()] = make(map[publicKey]struct{})
+			r.ports[p.port] = p.domain.publicKey()
+			r.ancSeqs[p.domain.publicKey()] = r.ancSeqCtr
+			r.blooms._addInfo(p.domain.publicKey())
 		} else {
 			// Send anything we've already sent over previous peer connections to this node
-			for k := range r.sent[p.key] {
+			for k := range r.sent[p.domain.publicKey()] {
 				if info, isIn := r.infos[k]; isIn {
 					p.sendAnnounce(r, info.getAnnounce(k))
 				} else {
@@ -130,12 +130,12 @@ func (r *router) addPeer(from phony.Actor, p *peer) {
 				}
 			}
 		}
-		r.peers[p.key][p] = struct{}{}
-		if _, isIn := r.responses[p.key]; !isIn {
-			if _, isIn := r.requests[p.key]; !isIn {
-				r.requests[p.key] = *r._newReq()
+		r.peers[p.domain.publicKey()][p] = struct{}{}
+		if _, isIn := r.responses[p.domain.publicKey()]; !isIn {
+			if _, isIn := r.requests[p.domain.publicKey()]; !isIn {
+				r.requests[p.domain.publicKey()] = *r._newReq()
 			}
-			req := r.requests[p.key]
+			req := r.requests[p.domain.publicKey()]
 			p.sendSigReq(r, &req)
 		}
 		r.blooms._sendBloom(p)
@@ -145,19 +145,19 @@ func (r *router) addPeer(from phony.Actor, p *peer) {
 func (r *router) removePeer(from phony.Actor, p *peer) {
 	r.Act(from, func() {
 		//r._resetCache()
-		ps := r.peers[p.key]
+		ps := r.peers[p.domain.publicKey()]
 		delete(ps, p)
 		if len(ps) == 0 {
-			delete(r.peers, p.key)
-			delete(r.sent, p.key)
+			delete(r.peers, p.domain.publicKey())
+			delete(r.sent, p.domain.publicKey())
 			delete(r.ports, p.port)
-			delete(r.requests, p.key)
-			delete(r.responses, p.key)
-			delete(r.resSeqs, p.key)
-			delete(r.ancs, p.key)
-			delete(r.ancSeqs, p.key)
-			delete(r.cache, p.key)
-			r.blooms._removeInfo(p.key)
+			delete(r.requests, p.domain.publicKey())
+			delete(r.responses, p.domain.publicKey())
+			delete(r.resSeqs, p.domain.publicKey())
+			delete(r.ancs, p.domain.publicKey())
+			delete(r.ancSeqs, p.domain.publicKey())
+			delete(r.cache, p.domain.publicKey())
+			r.blooms._removeInfo(p.domain.publicKey())
 			//r._fix()
 		} else {
 			// The bloom the remote node is tracking could be wrong due to a race
@@ -393,7 +393,7 @@ func (r *router) _handleRequest(p *peer, req *routerSigReq) {
 		routerSigReq: *req,
 		port:         p.port,
 	}
-	res.psig = r.core.crypto.privateKey.sign(res.bytesForSig(p.key, r.core.crypto.publicKey))
+	res.psig = r.core.crypto.privateKey.sign(res.bytesForSig(p.domain.publicKey(), r.core.crypto.publicKey))
 	p.sendSigRes(r, &res)
 }
 
@@ -404,10 +404,10 @@ func (r *router) handleRequest(from phony.Actor, p *peer, req *routerSigReq) {
 }
 
 func (r *router) _handleResponse(p *peer, res *routerSigRes) {
-	if _, isIn := r.responses[p.key]; !isIn && r.requests[p.key] == res.routerSigReq {
+	if _, isIn := r.responses[p.domain.publicKey()]; !isIn && r.requests[p.domain.publicKey()] == res.routerSigReq {
 		r.resSeqCtr++
-		r.resSeqs[p.key] = r.resSeqCtr
-		r.responses[p.key] = *res
+		r.resSeqs[p.domain.publicKey()] = r.resSeqCtr
+		r.responses[p.domain.publicKey()] = *res
 		//r._fix() // This could become our new parent
 	}
 }
@@ -521,7 +521,7 @@ func (r *router) _handleAnnounce(p *peer, ann *routerAnnounce) {
 			r.refresh = true
 		}
 		// No point in sending this back to the original sender
-		r.sent[p.key][ann.key] = struct{}{}
+		r.sent[p.domain.publicKey()][ann.key] = struct{}{}
 		//r._fix() // This could require us to change parents
 	} else {
 		// We didn't accept the info, because we alerady know it or something better
@@ -534,12 +534,12 @@ func (r *router) _handleAnnounce(p *peer, ann *routerAnnounce) {
 			// They sent something, but it was worse
 			// Should we tell them what we know
 			// Only to the p that sent it, since we'll spam the rest as messages arrive...
-			r.sent[p.key][ann.key] = struct{}{}
+			r.sent[p.domain.publicKey()][ann.key] = struct{}{}
 			p.sendAnnounce(r, oldInfo.getAnnounce(ann.key))
 		} else {
 			// They sent us exactly the same info we already have
 			// No point in sending it back when we do maintenance
-			r.sent[p.key][ann.key] = struct{}{}
+			r.sent[p.domain.publicKey()][ann.key] = struct{}{}
 		}
 	}
 }
@@ -563,8 +563,8 @@ func (r *router) handleTraffic(from phony.Actor, tr *traffic) {
 	r.Act(from, func() {
 		if p := r._lookup(tr.path, &tr.watermark); p != nil {
 			p.sendTraffic(r, tr)
-		} else if tr.dest == r.core.crypto.publicKey {
-			r.pathfinder._resetTimeout(tr.source)
+		} else if tr.dest.publicKey() == r.core.crypto.publicKey {
+			r.pathfinder._resetTimeout(tr.source.publicKey())
 			r.core.pconn.handleTraffic(r, tr)
 		} else {
 			// Not addressed to us, and we don't know a next hop.
@@ -666,7 +666,7 @@ func (r *router) _lookup(path []peerPort, watermark *uint64) *peer {
 	}
 	tiebreak := func(key publicKey) bool {
 		// If distances match, keep the peer with the lowest key, just so there's some kind of consistency
-		return bestPeer != nil && key.less(bestPeer.key)
+		return bestPeer != nil && key.less(bestPeer.domain.publicKey())
 	}
 	for k, ps := range r.peers {
 		if dist := r._getDist(path, k); dist < bestDist || (dist == bestDist && tiebreak(k)) {

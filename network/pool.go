@@ -20,6 +20,8 @@ var trafficPool = sync.Pool{New: func() interface{} { return new(traffic) }}
 
 func allocTraffic() *traffic {
 	tr := trafficPool.Get().(*traffic)
+	tr.source = initDomain()
+	tr.dest = initDomain()
 	tr.payload = allocBytes(0)
 	return tr
 }
