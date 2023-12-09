@@ -28,6 +28,7 @@ type DebugLabelInfo struct {
 
 type DebugSelfInfo struct {
 	Key            ed25519.PublicKey
+	Domain         types.Domain
 	RoutingEntries uint64
 }
 type DebugPeerInfo struct {
@@ -68,6 +69,7 @@ type DebugLookupInfo struct {
 
 func (d *Debug) GetSelf() (info DebugSelfInfo) {
 	info.Key = append(info.Key[:0], d.c.crypto.publicKey[:]...)
+	info.Domain = types.Domain(d.c.crypto.domain)
 	phony.Block(&d.c.router, func() {
 		info.RoutingEntries = uint64(len(d.c.router.infos))
 	})
