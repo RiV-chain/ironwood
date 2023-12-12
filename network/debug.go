@@ -44,8 +44,8 @@ type DebugPeerInfo struct {
 }
 
 type DebugTreeInfo struct {
-	Key      ed25519.PublicKey
-	Parent   ed25519.PublicKey
+	Key      []byte
+	Parent   []byte
 	Sequence uint64
 }
 
@@ -62,9 +62,9 @@ type DebugBloomInfo struct {
 }
 
 type DebugLookupInfo struct {
-	Key    ed25519.PublicKey
+	Key    []byte
 	Path   []uint64
-	Target ed25519.PublicKey
+	Target []byte
 }
 
 func (d *Debug) GetSelf() (info DebugSelfInfo) {
@@ -138,9 +138,9 @@ func (d *Debug) SetDebugLookupLogger(logger func(DebugLookupInfo)) {
 	phony.Block(&d.c.router, func() {
 		d.c.router.pathfinder.logger = func(lookup *pathLookup) {
 			info := DebugLookupInfo{
-				Key:    append(ed25519.PublicKey(nil), lookup.source[:]...),
+				Key:    append(ed25519.PublicKey(nil), lookup.source.Name[:]...),
 				Path:   make([]uint64, 0, len(lookup.from)),
-				Target: append(ed25519.PublicKey(nil), lookup.dest[:]...),
+				Target: append(ed25519.PublicKey(nil), lookup.dest.Name[:]...),
 			}
 			for _, p := range lookup.from {
 				info.Path = append(info.Path, uint64(p))

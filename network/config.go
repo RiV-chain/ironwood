@@ -1,7 +1,6 @@
 package network
 
 import (
-	"crypto/ed25519"
 	"time"
 )
 
@@ -11,8 +10,8 @@ type config struct {
 	peerKeepAliveDelay time.Duration
 	peerTimeout        time.Duration
 	peerMaxMessageSize uint64
-	bloomTransform     func(ed25519.PublicKey) ed25519.PublicKey
-	pathNotify         func(ed25519.PublicKey)
+	bloomTransform     func([publicKeySize]byte) [publicKeySize]byte
+	pathNotify         func([publicKeySize]byte)
 	pathTimeout        time.Duration
 	pathThrottle       time.Duration
 }
@@ -26,8 +25,8 @@ func configDefaults() Option {
 		c.peerKeepAliveDelay = time.Second
 		c.peerTimeout = 3 * time.Second
 		c.peerMaxMessageSize = 1048576 // 1 megabyte
-		c.bloomTransform = func(key ed25519.PublicKey) ed25519.PublicKey { return key }
-		c.pathNotify = func(key ed25519.PublicKey) {}
+		c.bloomTransform = func(key [publicKeySize]byte) [publicKeySize]byte { return key }
+		c.pathNotify = func(key [publicKeySize]byte) {}
 		c.pathTimeout = time.Minute
 		c.pathThrottle = time.Second
 	}
@@ -63,13 +62,13 @@ func WithPeerMaxMessageSize(size uint64) Option {
 	}
 }
 
-func WithBloomTransform(xform func(key ed25519.PublicKey) ed25519.PublicKey) Option {
+func WithBloomTransform(xform func(key [32]byte) [32]byte) Option {
 	return func(c *config) {
 		c.bloomTransform = xform
 	}
 }
 
-func WithPathNotify(notify func(key ed25519.PublicKey)) Option {
+func WithPathNotify(notify func(key [32]byte)) Option {
 	return func(c *config) {
 		c.pathNotify = notify
 	}

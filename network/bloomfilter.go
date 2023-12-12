@@ -30,7 +30,7 @@ func newBloom() *bloom {
 	}
 }
 
-func (b *bloom) addKey(key publicKey) {
+func (b *bloom) addKey(key name) {
 	b.filter.Add(key[:])
 }
 
@@ -121,7 +121,7 @@ func (b *bloom) decode(data []byte) error {
 
 type blooms struct {
 	router *router
-	blooms map[publicKey]bloomInfo
+	blooms map[name]bloomInfo
 	// TODO? add some kind of timeout and keepalive timer to force an update/send
 }
 
@@ -134,23 +134,23 @@ type bloomInfo struct {
 
 func (bs *blooms) init(r *router) {
 	bs.router = r
-	bs.blooms = make(map[publicKey]bloomInfo)
+	bs.blooms = make(map[name]bloomInfo)
 }
 
-func (bs *blooms) _isOnTree(key publicKey) bool {
+func (bs *blooms) _isOnTree(key name) bool {
 	return bs.blooms[key].onTree //|| key == bs.router.core.crypto.publicKey
 }
 
 func (bs *blooms) _fixOnTree() {
-	selfKey := bs.router.core.crypto.publicKey
+	selfKey := bs.router.core.crypto.domain.name()
 	if selfInfo, isIn := bs.router.infos[selfKey]; isIn {
 		for pk, pbi := range bs.blooms {
 			wasOn := pbi.onTree
 			pbi.onTree = false
-			if selfInfo.parent == pk {
+			if selfInfo.parent.equal(pk) {
 				pbi.onTree = true
 			} else if info, isIn := bs.router.infos[pk]; isIn {
-				if info.parent == selfKey {
+				if info.parent.equal(selfKey) {
 					pbi.onTree = true
 				}
 			} else {
@@ -172,22 +172,21 @@ func (bs *blooms) _fixOnTree() {
 	}
 }
 
-func (bs *blooms) xKey(key publicKey) publicKey {
+func (bs *blooms) xKey(key name) name {
 	k := key
-	xfed := bs.router.core.config.bloomTransform(k.toEd())
-	var xform publicKey
-	copy(xform[:], xfed)
+	xfed := bs.router.core.config.bloomTransform(k)
+	xform := xfed
 	return xform
 }
 
-func (bs *blooms) _addInfo(key publicKey) {
+func (bs *blooms) _addInfo(key name) {
 	bs.blooms[key] = bloomInfo{
 		send: *newBloom(),
 		recv: *newBloom(),
 	}
 }
 
-func (bs *blooms) _removeInfo(key publicKey) {
+func (bs *blooms) _removeInfo(key name) {
 	delete(bs.blooms, key)
 	// We'll need to send updated blooms, but this can happen during regular maintenance
 }
@@ -199,12 +198,12 @@ func (bs *blooms) handleBloom(fromPeer *peer, b *bloom) {
 }
 
 func (bs blooms) _handleBloom(fromPeer *peer, b *bloom) {
-	pbi, isIn := bs.blooms[fromPeer.domain.publicKey()]
+	pbi, isIn := bs.blooms[fromPeer.domain.name()]
 	if !isIn {
 		return
 	}
 	pbi.recv = *b
-	bs.blooms[fromPeer.domain.publicKey()] = pbi
+	bs.blooms[fromPeer.domain.name()] = pbi
 }
 
 func (bs *blooms) _doMaintenance() {
@@ -212,7 +211,7 @@ func (bs *blooms) _doMaintenance() {
 	bs._sendAllBlooms()
 }
 
-func (bs *blooms) _getBloomFor(key publicKey, keepOnes bool) (*bloom, bool) {
+func (bs *blooms) _getBloomFor(key name, keepOnes bool) (*bloom, bool) {
 	// getBloomFor increments the sequence number, even if we only send it to 1 peer
 	// this means we may sometimes unnecessarily send a bloom when we get a new peer link to an existing peer node
 	pbi, isIn := bs.blooms[key]
@@ -220,7 +219,7 @@ func (bs *blooms) _getBloomFor(key publicKey, keepOnes bool) (*bloom, bool) {
 		panic("this should never happen")
 	}
 	b := newBloom()
-	xform := bs.xKey(bs.router.core.crypto.publicKey)
+	xform := bs.xKey(bs.router.core.crypto.domain.name())
 	b.addKey(xform)
 	for k, pbi := range bs.blooms {
 		if !pbi.onTree {
@@ -259,7 +258,7 @@ func (bs *blooms) _getBloomFor(key publicKey, keepOnes bool) (*bloom, bool) {
 func (bs *blooms) _sendBloom(p *peer) {
 	// Just send whatever our most recently sent bloom is
 	// For new or off-tree nodes, this is the empty bloom filter
-	b := bs.blooms[p.domain.publicKey()].send
+	b := bs.blooms[p.domain.name()].send
 	p.sendBloom(bs.router, &b)
 }
 
@@ -281,7 +280,7 @@ func (bs *blooms) _sendAllBlooms() {
 	}
 }
 
-func (bs *blooms) sendMulticast(from phony.Actor, packet pqPacket, fromKey publicKey, toKey publicKey) {
+func (bs *blooms) sendMulticast(from phony.Actor, packet pqPacket, fromKey name, toKey name) {
 	// Ideally we need a way to detect duplicate packets from multiple links to the same peer, so we can drop them
 	// I.e. we need to sequence number all multicast packets... This can maybe be part of the framing, along side the packet length, or something
 	// For now, we just send to 1 peer (possibly at random)
@@ -290,7 +289,7 @@ func (bs *blooms) sendMulticast(from phony.Actor, packet pqPacket, fromKey publi
 	})
 }
 
-func (bs *blooms) _sendMulticast(packet pqPacket, fromKey publicKey, toKey publicKey) {
+func (bs *blooms) _sendMulticast(packet pqPacket, fromKey name, toKey name) {
 	// TODO make very sure this can't loop, even temporarily due to network state changes being delayed
 	//  Does the onTree state stay safe, even when we're delaying maintenance from message updates?...
 	xform := bs.xKey(toKey)

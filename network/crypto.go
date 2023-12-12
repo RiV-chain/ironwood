@@ -45,6 +45,10 @@ func (key *privateKey) sign(message []byte) signature {
 	return sig
 }
 
+func (name name) equal(comparedName name) bool {
+	return name == comparedName
+}
+
 func (publicKey publicKey) equal(comparedKey publicKey) bool {
 	return publicKey == comparedKey
 }
@@ -61,7 +65,7 @@ func (domain domain) equal(comparedDomain domain) bool {
 	return types.Domain(domain).Equal(types.Domain(comparedDomain))
 }
 
-func (key publicKey) less(comparedKey publicKey) bool {
+func (key name) less(comparedKey name) bool {
 	for idx := range key {
 		switch {
 		case key[idx] < comparedKey[idx]:

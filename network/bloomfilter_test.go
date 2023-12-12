@@ -19,7 +19,7 @@ func TestBloom(t *testing.T) {
 	}
 	// Intermedaite value test, add some keys
 	buf = buf[:0]
-	var k publicKey
+	var k name
 	b.addKey(k)
 	for idx := 0; idx < len(k); idx++ {
 		k[idx] = ^k[idx]

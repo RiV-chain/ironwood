@@ -92,10 +92,10 @@ func (tr *traffic) wireType() wirePacketType {
 	return wireTraffic
 }
 
-func (tr *traffic) sourceKey() publicKey {
-	return tr.source.publicKey()
+func (tr *traffic) sourceKey() domain {
+	return tr.source
 }
 
-func (tr *traffic) destKey() publicKey {
-	return tr.dest.publicKey()
+func (tr *traffic) destKey() domain {
+	return tr.dest
 }

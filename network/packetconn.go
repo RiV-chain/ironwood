@@ -196,7 +196,7 @@ func (pc *PacketConn) handleTraffic(from phony.Actor, tr *traffic) {
 	// Note: if there are multiple concurrent ReadFrom calls, packets can be returned out-of-order at the channel level
 	// But concurrent reads can always do things out of order, so that probaby doesn't matter...
 	pc.actor.Act(from, func() {
-		if !tr.dest.publicKey().equal(pc.core.crypto.publicKey) {
+		if !tr.dest.equal(pc.core.crypto.domain) {
 			// Wrong key, do nothing
 		} else if pc.recvReady > 0 {
 			// Send immediately
@@ -276,9 +276,8 @@ func (d *deadline) getCancel() chan struct{} {
 	return ch
 }
 
-func (pc *PacketConn) SendLookup(key ed25519.PublicKey) {
-	var k publicKey
-	copy(k[:], key)
+func (pc *PacketConn) SendLookup(key types.Domain) {
+	k := domain(key)
 	pc.core.router.Act(nil, func() {
 		pc.core.router.pathfinder._rumorSendLookup(k)
 	})
