@@ -147,10 +147,10 @@ func (bs *blooms) _fixOnTree() {
 		for pk, pbi := range bs.blooms {
 			wasOn := pbi.onTree
 			pbi.onTree = false
-			if selfInfo.parent.equal(pk) {
+			if selfInfo.parent.name().equal(pk) {
 				pbi.onTree = true
 			} else if info, isIn := bs.router.infos[pk]; isIn {
-				if info.parent.equal(selfKey) {
+				if info.parent.name().equal(selfKey) {
 					pbi.onTree = true
 				}
 			} else {

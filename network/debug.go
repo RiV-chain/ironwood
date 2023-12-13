@@ -97,7 +97,7 @@ func (d *Debug) GetTree() (infos []DebugTreeInfo) {
 		for key, dinfo := range d.c.router.infos {
 			var info DebugTreeInfo
 			info.Key = append(info.Key[:0], key[:]...)
-			info.Parent = append(info.Parent[:0], dinfo.parent[:]...)
+			info.Parent = append(info.Parent[:0], dinfo.parent.Name[:]...)
 			info.Sequence = dinfo.seq
 			infos = append(infos, info)
 		}

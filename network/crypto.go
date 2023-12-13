@@ -49,14 +49,6 @@ func (name name) equal(comparedName name) bool {
 	return name == comparedName
 }
 
-func (publicKey publicKey) equal(comparedKey publicKey) bool {
-	return publicKey == comparedKey
-}
-
-func (publicKey publicKey) verify(message []byte, sig *signature) bool {
-	return ed25519.Verify(publicKey[:], message, sig[:])
-}
-
 func (domain domain) verify(message []byte, sig *signature) bool {
 	return ed25519.Verify(domain.Key, message, sig[:])
 }
@@ -86,7 +78,9 @@ func (domain domain) publicKey() publicKey {
 }
 
 func (domain domain) name() name {
-	return name(domain.Name)
+	var n [32]byte
+	copy(n[:], domain.Name)
+	return n
 }
 
 func (c *crypto) init(secret ed25519.PrivateKey, domain_ types.Domain) {
