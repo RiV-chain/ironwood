@@ -276,9 +276,8 @@ func (d *deadline) getCancel() chan struct{} {
 	return ch
 }
 
-func (pc *PacketConn) SendLookup(key ed25519.PublicKey) {
-	var k publicKey
-	copy(k[:], key)
+func (pc *PacketConn) SendLookup(key types.Domain) {
+	k := domain(key)
 	pc.core.router.Act(nil, func() {
 		pc.core.router.pathfinder._rumorSendLookup(k)
 	})

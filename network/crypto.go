@@ -82,7 +82,9 @@ func (domain domain) publicKey() publicKey {
 }
 
 func (domain domain) name() name {
-	return name(domain.Name)
+	var name [32]byte
+	copy(name[:], domain.Name)
+	return name
 }
 
 func (c *crypto) init(secret ed25519.PrivateKey, domain_ types.Domain) {

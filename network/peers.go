@@ -317,7 +317,7 @@ func (p *peer) _handleSigRes(bs []byte) error {
 	if err := res.decode(bs); err != nil {
 		return err
 	}
-	if !res.check(p.peers.core.crypto.publicKey, p.domain.publicKey()) {
+	if !res.check(p.peers.core.crypto.domain, p.domain) {
 		return types.ErrBadMessage
 	}
 	p.peers.core.router.handleResponse(p, p, res)

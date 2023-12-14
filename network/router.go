@@ -36,23 +36,33 @@ Potential showstopping issue (long term):
 
 */
 
+type peerdomain struct {
+	peers  map[*peer]struct{}
+	domain domain
+}
+
+type routerDomainSigRes struct {
+	domain       domain
+	routerSigRes routerSigRes
+}
+
 type router struct {
 	phony.Inbox
 	core       *core
-	pathfinder pathfinder                           // see pathfinder.go
-	blooms     blooms                               // see bloomfilter.go
-	peers      map[publicKey]map[*peer]struct{}     // True if we're allowed to send a mirror to this peer (but have not done so already)
-	sent       map[publicKey]map[publicKey]struct{} // tracks which info we've sent to our peer
-	ports      map[peerPort]publicKey               // used in tree lookups
-	infos      map[publicKey]routerInfo
-	timers     map[publicKey]*time.Timer
-	ancs       map[publicKey][]publicKey // Peer ancestry info
-	ancSeqs    map[publicKey]uint64
+	pathfinder pathfinder               // see pathfinder.go
+	blooms     blooms                   // see bloomfilter.go
+	peers      map[name]peerdomain      // True if we're allowed to send a mirror to this peer (but have not done so already)
+	sent       map[name]map[name]domain // tracks which info we've sent to our peer
+	ports      map[peerPort]name        // used in tree lookups
+	infos      map[name]routerInfo
+	timers     map[name]*time.Timer
+	ancs       map[name][]domain // Peer ancestry info
+	ancSeqs    map[name]uint64
 	ancSeqCtr  uint64
-	cache      map[publicKey][]peerPort // Cache path slice for each peer
-	requests   map[publicKey]routerSigReq
-	responses  map[publicKey]routerSigRes
-	resSeqs    map[publicKey]uint64
+	cache      map[name][]peerPort // Cache path slice for each peer
+	requests   map[name]routerSigReq
+	responses  map[name]routerDomainSigRes
+	resSeqs    map[name]uint64
 	resSeqCtr  uint64
 	refresh    bool
 	doRoot1    bool
@@ -64,17 +74,17 @@ func (r *router) init(c *core) {
 	r.core = c
 	r.pathfinder.init(r)
 	r.blooms.init(r)
-	r.peers = make(map[publicKey]map[*peer]struct{})
-	r.sent = make(map[publicKey]map[publicKey]struct{})
-	r.ports = make(map[peerPort]publicKey)
-	r.infos = make(map[publicKey]routerInfo)
-	r.timers = make(map[publicKey]*time.Timer)
-	r.ancs = make(map[publicKey][]publicKey)
-	r.ancSeqs = make(map[publicKey]uint64)
-	r.cache = make(map[publicKey][]peerPort)
-	r.requests = make(map[publicKey]routerSigReq)
-	r.responses = make(map[publicKey]routerSigRes)
-	r.resSeqs = make(map[publicKey]uint64)
+	r.peers = make(map[name]peerdomain)
+	r.sent = make(map[name]map[name]domain)
+	r.ports = make(map[peerPort]name)
+	r.infos = make(map[name]routerInfo)
+	r.timers = make(map[name]*time.Timer)
+	r.ancs = make(map[name][]domain)
+	r.ancSeqs = make(map[name]uint64)
+	r.cache = make(map[name][]peerPort)
+	r.requests = make(map[name]routerSigReq)
+	r.responses = make(map[name]routerDomainSigRes)
+	r.resSeqs = make(map[name]uint64)
 	// Kick off actor to do initial work / become root
 	r.mainTimer = time.AfterFunc(time.Second, func() {
 		r.Act(nil, r._doMaintenance)
@@ -114,28 +124,37 @@ func (r *router) _resetCache() {
 func (r *router) addPeer(from phony.Actor, p *peer) {
 	r.Act(from, func() {
 		//r._resetCache()
-		if _, isIn := r.peers[p.domain.publicKey()]; !isIn {
-			r.peers[p.domain.publicKey()] = make(map[*peer]struct{})
-			r.sent[p.domain.publicKey()] = make(map[publicKey]struct{})
-			r.ports[p.port] = p.domain.publicKey()
-			r.ancSeqs[p.domain.publicKey()] = r.ancSeqCtr
-			r.blooms._addInfo(p.domain.publicKey())
+		if _, isIn := r.peers[p.domain.name()]; !isIn {
+			r.peers[p.domain.name()] = peerdomain{
+				peers:  make(map[*peer]struct{}),
+				domain: initDomain(),
+			}
+			r.sent[p.domain.name()] = make(map[name]domain)
+			r.ports[p.port] = p.domain.name()
+			r.ancSeqs[p.domain.name()] = r.ancSeqCtr
+			r.blooms._addInfo(p.domain.name())
 		} else {
 			// Send anything we've already sent over previous peer connections to this node
-			for k := range r.sent[p.domain.publicKey()] {
+			for k, v := range r.sent[p.domain.name()] {
 				if info, isIn := r.infos[k]; isIn {
-					p.sendAnnounce(r, info.getAnnounce(k))
+					p.sendAnnounce(r, info.getAnnounce(v))
 				} else {
 					panic("this should never happen")
 				}
 			}
 		}
-		r.peers[p.domain.publicKey()][p] = struct{}{}
-		if _, isIn := r.responses[p.domain.publicKey()]; !isIn {
-			if _, isIn := r.requests[p.domain.publicKey()]; !isIn {
-				r.requests[p.domain.publicKey()] = *r._newReq()
+		peer := r.peers[p.domain.name()].peers
+		peer[p] = struct{}{}
+		r.peers[p.domain.name()] = peerdomain{
+			peers:  peer,
+			domain: p.domain,
+		}
+
+		if _, isIn := r.responses[p.domain.name()]; !isIn {
+			if _, isIn := r.requests[p.domain.name()]; !isIn {
+				r.requests[p.domain.name()] = *r._newReq()
 			}
-			req := r.requests[p.domain.publicKey()]
+			req := r.requests[p.domain.name()]
 			p.sendSigReq(r, &req)
 		}
 		r.blooms._sendBloom(p)
@@ -145,19 +164,19 @@ func (r *router) addPeer(from phony.Actor, p *peer) {
 func (r *router) removePeer(from phony.Actor, p *peer) {
 	r.Act(from, func() {
 		//r._resetCache()
-		ps := r.peers[p.domain.publicKey()]
+		ps := r.peers[p.domain.name()].peers
 		delete(ps, p)
 		if len(ps) == 0 {
-			delete(r.peers, p.domain.publicKey())
-			delete(r.sent, p.domain.publicKey())
+			delete(r.peers, p.domain.name())
+			delete(r.sent, p.domain.name())
 			delete(r.ports, p.port)
-			delete(r.requests, p.domain.publicKey())
-			delete(r.responses, p.domain.publicKey())
-			delete(r.resSeqs, p.domain.publicKey())
-			delete(r.ancs, p.domain.publicKey())
-			delete(r.ancSeqs, p.domain.publicKey())
-			delete(r.cache, p.domain.publicKey())
-			r.blooms._removeInfo(p.domain.publicKey())
+			delete(r.requests, p.domain.name())
+			delete(r.responses, p.domain.name())
+			delete(r.resSeqs, p.domain.name())
+			delete(r.ancs, p.domain.name())
+			delete(r.ancSeqs, p.domain.name())
+			delete(r.cache, p.domain.name())
+			r.blooms._removeInfo(p.domain.name())
 			//r._fix()
 		} else {
 			// The bloom the remote node is tracking could be wrong due to a race
@@ -187,7 +206,7 @@ func (r *router) _sendReqs() {
 	for pk, ps := range r.peers {
 		req := r._newReq()
 		r.requests[pk] = *req
-		for p := range ps {
+		for p := range ps.peers {
 			p.sendSigReq(r, req)
 		}
 	}
@@ -195,15 +214,15 @@ func (r *router) _sendReqs() {
 
 func (r *router) _updateAncestries() {
 	r.ancSeqCtr++
-	for pkey := range r.peers {
-		anc := r._getAncestry(pkey)
+	for pkey, v := range r.peers {
+		anc := r._getAncestry(v.domain)
 		old := r.ancs[pkey]
 		var diff bool
 		if len(anc) != len(old) {
 			diff = true
 		} else {
 			for idx := range anc {
-				if anc[idx] != old[idx] {
+				if !anc[idx].equal(old[idx]) {
 					diff = true
 					break
 				}
@@ -217,52 +236,52 @@ func (r *router) _updateAncestries() {
 }
 
 func (r *router) _fix() {
-	bestRoot := r.core.crypto.publicKey
-	bestParent := r.core.crypto.publicKey
-	self := r.infos[r.core.crypto.publicKey]
+	bestRoot := r.core.crypto.domain
+	bestParent := r.core.crypto.domain
+	self := r.infos[r.core.crypto.domain.name()]
 	// Check if our current parent leads to a better root than ourself
-	if _, isIn := r.peers[self.parent]; isIn {
-		root, _ := r._getRootAndDists(r.core.crypto.publicKey)
-		if root.less(bestRoot) {
+	if _, isIn := r.peers[self.parent.name()]; isIn {
+		root, _ := r._getRootAndDists(r.core.crypto.domain)
+		if root.treeLess(bestRoot) {
 			bestRoot, bestParent = root, self.parent
 		}
 	}
 	// Check if we know a better root/parent
-	for pk := range r.responses {
+	for pk, v := range r.responses {
 		if _, isIn := r.infos[pk]; !isIn {
 			// We don't know where this peer is
 			continue
 		}
-		pRoot, pDists := r._getRootAndDists(pk)
-		if _, isIn := pDists[r.core.crypto.publicKey]; isIn {
+		pRoot, pDists := r._getRootAndDists(v.domain)
+		if _, isIn := pDists[r.core.crypto.domain.name()]; isIn {
 			// This would loop through us already
 			continue
 		}
-		if pRoot.less(bestRoot) {
-			bestRoot, bestParent = pRoot, pk
-		} else if pRoot != bestRoot {
+		if pRoot.treeLess(bestRoot) {
+			bestRoot, bestParent = pRoot, v.domain
+		} else if !pRoot.equal(bestRoot) {
 			continue // wrong root
 		}
-		if r.ancSeqs[pk] < r.ancSeqs[bestParent] {
+		if r.ancSeqs[pk] < r.ancSeqs[bestParent.name()] {
 			// This node is advertising a more stable path, so we should probably switch to it...
-			bestRoot, bestParent = pRoot, pk
-		} else if r.ancSeqs[pk] != r.ancSeqs[bestParent] {
+			bestRoot, bestParent = pRoot, v.domain
+		} else if r.ancSeqs[pk] != r.ancSeqs[bestParent.name()] {
 			continue // less stable path
-		} else if /* r.refresh  || */ bestParent != self.parent {
+		} else if /* r.refresh  || */ !bestParent.equal(self.parent) {
 			// Equally good path (same anc seqs)
 			// TODO? Update parents even if the old one works, if the new one is "better"
 			//  But it has to be by a lot, stability is high priority (affects all downstream nodes)
 			//  For now, if we're forced to select a new parent, then choose the "best" one
 			//  Otherwise, just always keep the current parent if possible
-			if pRoot == bestRoot && r.resSeqs[pk] < r.resSeqs[bestParent] {
-				bestRoot, bestParent = pRoot, pk
+			if pRoot.equal(bestRoot) && r.resSeqs[pk] < r.resSeqs[bestParent.name()] {
+				bestRoot, bestParent = pRoot, v.domain
 			}
 		}
 	}
-	if r.refresh || r.doRoot1 || r.doRoot2 || self.parent != bestParent {
-		res, isIn := r.responses[bestParent]
+	if r.refresh || r.doRoot1 || r.doRoot2 || !self.parent.equal(bestParent) {
+		res, isIn := r.responses[bestParent.name()]
 		switch {
-		case isIn && bestRoot != r.core.crypto.publicKey && r._useResponse(bestParent, &res):
+		case isIn && !bestRoot.equal(r.core.crypto.domain) && r._useResponse(bestParent, &res):
 			// Somebody else should be root
 			// Note that it's possible our current parent hasn't sent a res for our current req
 			// (Link failure in progress, or from bad luck with timing)
@@ -303,29 +322,29 @@ func (r *router) _fix() {
 func (r *router) _sendAnnounces() {
 	// This is insanely delicate, lots of correctness is implicit across how nodes behave
 	// Change nothing here.
-	selfAnc := r._getAncestry(r.core.crypto.publicKey)
-	var toSend []publicKey
+	selfAnc := r._getAncestry(r.core.crypto.domain)
+	var toSend []domain
 	var anns []*routerAnnounce
 
 	for peerKey, sent := range r.sent {
 		// Initial setup stuff
 		toSend = toSend[:0]
 		anns = anns[:0]
-		peerAnc := r._getAncestry(peerKey)
+		peerAnc := r._getAncestry(sent[peerKey])
 
 		// Get whatever we haven't sent from selfAnc
 		for _, k := range selfAnc {
-			if _, isIn := sent[k]; !isIn {
+			if _, isIn := sent[k.name()]; !isIn {
 				toSend = append(toSend, k)
-				sent[k] = struct{}{}
+				sent[k.name()] = k
 			}
 		}
 
 		// Get whatever we haven't sent from peerAnc
 		for _, k := range peerAnc {
-			if _, isIn := sent[k]; !isIn {
+			if _, isIn := sent[k.name()]; !isIn {
 				toSend = append(toSend, k)
-				sent[k] = struct{}{}
+				sent[k.name()] = k
 			}
 		}
 
@@ -344,7 +363,7 @@ func (r *router) _sendAnnounces() {
 
 		// Now prepare announcements
 		for _, k := range toSend {
-			if info, isIn := r.infos[k]; isIn {
+			if info, isIn := r.infos[k.name()]; isIn {
 				anns = append(anns, info.getAnnounce(k))
 			} else {
 				panic("this should never happen")
@@ -352,7 +371,7 @@ func (r *router) _sendAnnounces() {
 		}
 
 		// Send announcements
-		for p := range r.peers[peerKey] {
+		for p := range r.peers[peerKey].peers {
 			for _, ann := range anns {
 				p.sendAnnounce(r, ann)
 			}
@@ -365,7 +384,7 @@ func (r *router) _newReq() *routerSigReq {
 	nonce := make([]byte, 8)
 	crand.Read(nonce) // If there's an error, there's not much to do...
 	req.nonce = binary.BigEndian.Uint64(nonce)
-	req.seq = r.infos[r.core.crypto.publicKey].seq + 1
+	req.seq = r.infos[r.core.crypto.domain.name()].seq + 1
 	return &req
 }
 
@@ -375,10 +394,10 @@ func (r *router) _becomeRoot() bool {
 		routerSigReq: *req,
 		port:         0, // TODO? something else?
 	}
-	res.psig = r.core.crypto.privateKey.sign(res.bytesForSig(r.core.crypto.publicKey, r.core.crypto.publicKey))
+	res.psig = r.core.crypto.privateKey.sign(res.bytesForSig(r.core.crypto.domain, r.core.crypto.domain))
 	ann := routerAnnounce{
-		key:          r.core.crypto.publicKey,
-		parent:       r.core.crypto.publicKey,
+		key:          r.core.crypto.domain,
+		parent:       r.core.crypto.domain,
 		routerSigRes: res,
 		sig:          res.psig,
 	}
@@ -393,7 +412,7 @@ func (r *router) _handleRequest(p *peer, req *routerSigReq) {
 		routerSigReq: *req,
 		port:         p.port,
 	}
-	res.psig = r.core.crypto.privateKey.sign(res.bytesForSig(p.domain.publicKey(), r.core.crypto.publicKey))
+	res.psig = r.core.crypto.privateKey.sign(res.bytesForSig(p.domain, r.core.crypto.domain))
 	p.sendSigRes(r, &res)
 }
 
@@ -404,22 +423,25 @@ func (r *router) handleRequest(from phony.Actor, p *peer, req *routerSigReq) {
 }
 
 func (r *router) _handleResponse(p *peer, res *routerSigRes) {
-	if _, isIn := r.responses[p.domain.publicKey()]; !isIn && r.requests[p.domain.publicKey()] == res.routerSigReq {
+	if _, isIn := r.responses[p.domain.name()]; !isIn && r.requests[p.domain.name()] == res.routerSigReq {
 		r.resSeqCtr++
-		r.resSeqs[p.domain.publicKey()] = r.resSeqCtr
-		r.responses[p.domain.publicKey()] = *res
+		r.resSeqs[p.domain.name()] = r.resSeqCtr
+		r.responses[p.domain.name()] = routerDomainSigRes{
+			domain:       p.domain,
+			routerSigRes: *res,
+		}
 		//r._fix() // This could become our new parent
 	}
 }
 
-func (r *router) _useResponse(peerKey publicKey, res *routerSigRes) bool {
-	bs := res.bytesForSig(r.core.crypto.publicKey, peerKey)
+func (r *router) _useResponse(peerKey domain, res *routerDomainSigRes) bool {
+	bs := res.routerSigRes.bytesForSig(r.core.crypto.domain, peerKey)
 	info := routerInfo{
 		parent:       peerKey,
-		routerSigRes: *res,
+		routerSigRes: res.routerSigRes,
 		sig:          r.core.crypto.privateKey.sign(bs),
 	}
-	ann := info.getAnnounce(r.core.crypto.publicKey)
+	ann := info.getAnnounce(r.core.crypto.domain)
 	if r._update(ann) {
 		/*
 			for _, ps := range r.peers {
@@ -440,7 +462,7 @@ func (r *router) handleResponse(from phony.Actor, p *peer, res *routerSigRes) {
 }
 
 func (r *router) _update(ann *routerAnnounce) bool {
-	if info, isIn := r.infos[ann.key]; isIn {
+	if info, isIn := r.infos[ann.key.name()]; isIn {
 		switch {
 		// Note: This logic *must* be the same on every node
 		// If that's not true, then peers can infinitely spam announcements at each other for expired infos
@@ -452,10 +474,10 @@ func (r *router) _update(ann *routerAnnounce) bool {
 			return false
 		case info.seq < ann.seq:
 			// This is a newer seq, so don't exit
-		case info.parent.less(ann.parent):
+		case info.parent.treeLess(ann.parent):
 			// same seq, worse (higher) parent
 			return false
-		case ann.parent.less(info.parent):
+		case ann.parent.treeLess(info.parent):
 			// same seq, better (lower) parent, so don't exit
 		case ann.nonce < info.nonce:
 			// same seq and parent, lower nonce, so don't exit
@@ -466,7 +488,7 @@ func (r *router) _update(ann *routerAnnounce) bool {
 	}
 	// Clean up sent info and cache
 	for _, sent := range r.sent {
-		delete(sent, ann.key)
+		delete(sent, ann.key.name())
 	}
 	r._resetCache()
 	// Save info
@@ -477,11 +499,11 @@ func (r *router) _update(ann *routerAnnounce) bool {
 	}
 	key := ann.key
 	var timer *time.Timer
-	if key == r.core.crypto.publicKey {
+	if key.equal(r.core.crypto.domain) {
 		delay := r.core.config.routerRefresh // TODO? slightly randomize
 		timer = time.AfterFunc(delay, func() {
 			r.Act(nil, func() {
-				if r.timers[key] == timer {
+				if r.timers[key.name()] == timer {
 					r.refresh = true
 					//r._fix()
 				}
@@ -490,12 +512,12 @@ func (r *router) _update(ann *routerAnnounce) bool {
 	} else {
 		timer = time.AfterFunc(r.core.config.routerTimeout, func() {
 			r.Act(nil, func() {
-				if r.timers[key] == timer {
+				if r.timers[key.name()] == timer {
 					timer.Stop() // Shouldn't matter, but just to be safe...
-					delete(r.infos, key)
-					delete(r.timers, key)
+					delete(r.infos, key.name())
+					delete(r.timers, key.name())
 					for _, sent := range r.sent {
-						delete(sent, key)
+						delete(sent, key.name())
 					}
 					r._resetCache()
 					//r._fix()
@@ -503,17 +525,17 @@ func (r *router) _update(ann *routerAnnounce) bool {
 			})
 		})
 	}
-	if oldTimer, isIn := r.timers[key]; isIn {
+	if oldTimer, isIn := r.timers[key.name()]; isIn {
 		oldTimer.Stop()
 	}
-	r.timers[ann.key] = timer
-	r.infos[ann.key] = info
+	r.timers[ann.key.name()] = timer
+	r.infos[ann.key.name()] = info
 	return true
 }
 
 func (r *router) _handleAnnounce(p *peer, ann *routerAnnounce) {
 	if r._update(ann) {
-		if ann.key == r.core.crypto.publicKey {
+		if ann.key.equal(r.core.crypto.domain) {
 			// We just updated our own info from a message we received by a peer
 			// That suggests we went offline, so our seq reset when we came back
 			// The info they sent us could have been expired (see below in this function)
@@ -521,7 +543,7 @@ func (r *router) _handleAnnounce(p *peer, ann *routerAnnounce) {
 			r.refresh = true
 		}
 		// No point in sending this back to the original sender
-		r.sent[p.domain.publicKey()][ann.key] = struct{}{}
+		r.sent[p.domain.name()][ann.key.name()] = ann.key
 		//r._fix() // This could require us to change parents
 	} else {
 		// We didn't accept the info, because we alerady know it or something better
@@ -530,16 +552,16 @@ func (r *router) _handleAnnounce(p *peer, ann *routerAnnounce) {
 			routerSigRes: ann.routerSigRes,
 			sig:          ann.sig,
 		}
-		if oldInfo := r.infos[ann.key]; info != oldInfo {
+		if oldInfo := r.infos[ann.key.name()]; !info.parent.equal(oldInfo.parent) || info.routerSigRes != oldInfo.routerSigRes || info.sig != oldInfo.sig {
 			// They sent something, but it was worse
 			// Should we tell them what we know
 			// Only to the p that sent it, since we'll spam the rest as messages arrive...
-			r.sent[p.domain.publicKey()][ann.key] = struct{}{}
+			r.sent[p.domain.name()][ann.key.name()] = ann.key
 			p.sendAnnounce(r, oldInfo.getAnnounce(ann.key))
 		} else {
 			// They sent us exactly the same info we already have
 			// No point in sending it back when we do maintenance
-			r.sent[p.domain.publicKey()][ann.key] = struct{}{}
+			r.sent[p.domain.name()][ann.key.name()] = ann.key
 		}
 	}
 }
@@ -564,7 +586,7 @@ func (r *router) handleTraffic(from phony.Actor, tr *traffic) {
 		if p := r._lookup(tr.path, &tr.watermark); p != nil {
 			p.sendTraffic(r, tr)
 		} else if tr.dest.publicKey() == r.core.crypto.publicKey {
-			r.pathfinder._resetTimeout(tr.source.publicKey())
+			r.pathfinder._resetTimeout(tr.source.name())
 			r.core.pconn.handleTraffic(r, tr)
 		} else {
 			// Not addressed to us, and we don't know a next hop.
@@ -574,20 +596,20 @@ func (r *router) handleTraffic(from phony.Actor, tr *traffic) {
 	})
 }
 
-func (r *router) _getRootAndDists(dest publicKey) (publicKey, map[publicKey]uint64) {
+func (r *router) _getRootAndDists(dest domain) (domain, map[name]uint64) {
 	// This returns the distances from the destination's root for the destination and each of its ancestors
 	// Note that we skip any expired infos
-	dists := make(map[publicKey]uint64)
+	dists := make(map[name]uint64)
 	next := dest
-	var root publicKey
+	var root domain
 	var dist uint64
 	for {
-		if _, isIn := dists[next]; isIn {
+		if _, isIn := dists[next.name()]; isIn {
 			break
 		}
-		if info, isIn := r.infos[next]; isIn {
+		if info, isIn := r.infos[next.name()]; isIn {
 			root = next
-			dists[next] = dist
+			dists[next.name()] = dist
 			dist++
 			next = info.parent
 		} else {
@@ -597,20 +619,20 @@ func (r *router) _getRootAndDists(dest publicKey) (publicKey, map[publicKey]uint
 	return root, dists
 }
 
-func (r *router) _getRootAndPath(dest publicKey) (publicKey, []peerPort) {
+func (r *router) _getRootAndPath(dest domain) (domain, []peerPort) {
 	var ports []peerPort
-	visited := make(map[publicKey]struct{})
-	var root publicKey
+	visited := make(map[name]struct{})
+	var root domain
 	next := dest
 	for {
-		if _, isIn := visited[next]; isIn {
+		if _, isIn := visited[next.name()]; isIn {
 			// We hit a loop
 			return dest, nil
 		}
-		if info, isIn := r.infos[next]; isIn {
+		if info, isIn := r.infos[next.name()]; isIn {
 			root = next
-			visited[next] = struct{}{}
-			if next == info.parent {
+			visited[next.name()] = struct{}{}
+			if next.equal(info.parent) {
 				// We reached a root, don't append the self port (it should be zero anyway)
 				break
 			}
@@ -628,14 +650,14 @@ func (r *router) _getRootAndPath(dest publicKey) (publicKey, []peerPort) {
 	return root, ports
 }
 
-func (r *router) _getDist(destPath []peerPort, key publicKey) uint64 {
+func (r *router) _getDist(destPath []peerPort, key domain) uint64 {
 	// We cache the keyPath to avoid allocating slices for every lookup
 	var keyPath []peerPort
-	if cached, isIn := r.cache[key]; isIn {
+	if cached, isIn := r.cache[key.name()]; isIn {
 		keyPath = cached
 	} else {
 		_, keyPath = r._getRootAndPath(key)
-		r.cache[key] = keyPath
+		r.cache[key.name()] = keyPath
 	}
 	end := len(destPath)
 	if len(keyPath) < end {
@@ -657,26 +679,26 @@ func (r *router) _lookup(path []peerPort, watermark *uint64) *peer {
 	var bestPeer *peer
 	bestDist := ^uint64(0)
 	if watermark != nil {
-		if dist := r._getDist(path, r.core.crypto.publicKey); dist < *watermark {
+		if dist := r._getDist(path, r.core.crypto.domain); dist < *watermark {
 			bestDist = dist // Self dist, so other nodes must be strictly better by distance
 			*watermark = dist
 		} else {
 			return nil
 		}
 	}
-	tiebreak := func(key publicKey) bool {
+	tiebreak := func(key domain) bool {
 		// If distances match, keep the peer with the lowest key, just so there's some kind of consistency
-		return bestPeer != nil && key.less(bestPeer.domain.publicKey())
+		return bestPeer != nil && key.treeLess(bestPeer.domain)
 	}
-	for k, ps := range r.peers {
-		if dist := r._getDist(path, k); dist < bestDist || (dist == bestDist && tiebreak(k)) {
-			for p := range ps {
+	for _, ps := range r.peers {
+		if dist := r._getDist(path, ps.domain); dist < bestDist || (dist == bestDist && tiebreak(ps.domain)) {
+			for p := range ps.peers {
 				// Set the next hop to any peer object for this peer
 				bestPeer = p
 				bestDist = dist
 				break
 			}
-			for p := range ps {
+			for p := range ps.peers {
 				// Find the best peer object for this peer
 				switch {
 				case bestPeer != nil && p.prio > bestPeer.prio:
@@ -694,7 +716,7 @@ func (r *router) _lookup(path []peerPort, watermark *uint64) *peer {
 	return bestPeer
 }
 
-func (r *router) _getAncestry(key publicKey) []publicKey {
+func (r *router) _getAncestry(key domain) []domain {
 	// Returns the ancestry starting with the root side, ordering is important for how we send over the network / GC info...
 	anc := r._backwardsAncestry(key)
 	for left, right := 0, len(anc)-1; left < right; left, right = left+1, right-1 {
@@ -703,18 +725,18 @@ func (r *router) _getAncestry(key publicKey) []publicKey {
 	return anc
 }
 
-func (r *router) _backwardsAncestry(key publicKey) []publicKey {
+func (r *router) _backwardsAncestry(key domain) []domain {
 	// Return an ordered list of node ancestry, starting with the given key and ending at the root (or the end of the line)
-	var anc []publicKey
+	var anc []domain
 	here := key
 	for {
 		// TODO? use a map or something to check visited nodes faster?
 		for _, k := range anc {
-			if k == here {
+			if k.equal(here) {
 				return anc
 			}
 		}
-		if info, isIn := r.infos[here]; isIn {
+		if info, isIn := r.infos[here.name()]; isIn {
 			anc = append(anc, here)
 			here = info.parent
 			continue
@@ -733,10 +755,10 @@ type routerSigReq struct {
 	nonce uint64
 }
 
-func (req *routerSigReq) bytesForSig(node, parent publicKey) []byte {
+func (req *routerSigReq) bytesForSig(node, parent domain) []byte {
 	out := make([]byte, 0, publicKeySize*2+8+8)
-	out = append(out, node[:]...)
-	out = append(out, parent[:]...)
+	out = append(out, node.Name[:]...)
+	out = append(out, parent.Name[:]...)
 	out, _ = req.encode(out)
 	return out
 }
@@ -792,12 +814,12 @@ type routerSigRes struct {
 	psig signature
 }
 
-func (res *routerSigRes) check(node, parent publicKey) bool {
+func (res *routerSigRes) check(node, parent domain) bool {
 	bs := res.bytesForSig(node, parent)
 	return parent.verify(bs, &res.psig)
 }
 
-func (res *routerSigRes) bytesForSig(node, parent publicKey) []byte {
+func (res *routerSigRes) bytesForSig(node, parent domain) []byte {
 	bs := res.routerSigReq.bytesForSig(node, parent)
 	bs = wireAppendUint(bs, uint64(res.port))
 	return bs
@@ -857,14 +879,14 @@ func (res *routerSigRes) decode(data []byte) error {
  *******************/
 
 type routerAnnounce struct {
-	key    publicKey
-	parent publicKey
+	key    domain
+	parent domain
 	routerSigRes
 	sig signature
 }
 
 func (ann *routerAnnounce) check() bool {
-	if ann.port == 0 && ann.key != ann.parent {
+	if ann.port == 0 && !ann.key.equal(ann.parent) {
 		return false
 	}
 	bs := ann.bytesForSig(ann.key, ann.parent)
@@ -872,8 +894,10 @@ func (ann *routerAnnounce) check() bool {
 }
 
 func (ann *routerAnnounce) size() int {
-	size := len(ann.key)
-	size += len(ann.parent)
+	size := len(ann.key.Key)
+	size += len(ann.parent.Key)
+	size += len(ann.key.Name)
+	size += len(ann.parent.Name)
 	size += ann.routerSigRes.size()
 	size += len(ann.sig)
 	return size
@@ -882,8 +906,10 @@ func (ann *routerAnnounce) size() int {
 func (ann *routerAnnounce) encode(out []byte) ([]byte, error) {
 	start := len(out)
 	var err error
-	out = append(out, ann.key[:]...)
-	out = append(out, ann.parent[:]...)
+	out = append(out, ann.key.Key[:]...)
+	out = append(out, ann.parent.Key[:]...)
+	out = append(out, ann.key.Name[:]...)
+	out = append(out, ann.parent.Name[:]...)
 	out, err = ann.routerSigRes.encode(out)
 	if err != nil {
 		return nil, err
@@ -897,10 +923,17 @@ func (ann *routerAnnounce) encode(out []byte) ([]byte, error) {
 }
 
 func (ann *routerAnnounce) decode(data []byte) error {
-	var tmp routerAnnounce
-	if !wireChopSlice(tmp.key[:], &data) {
+	tmp := routerAnnounce{
+		key:    initDomain(),
+		parent: initDomain(),
+	}
+	if !wireChopSlice(tmp.key.Key[:], &data) {
 		return types.ErrDecode
-	} else if !wireChopSlice(tmp.parent[:], &data) {
+	} else if !wireChopSlice(tmp.parent.Key[:], &data) {
+		return types.ErrDecode
+	} else if !wireChopSlice(tmp.key.Name[:], &data) {
+		return types.ErrDecode
+	} else if !wireChopSlice(tmp.parent.Name[:], &data) {
 		return types.ErrDecode
 	} else if err := tmp.routerSigRes.chop(&data); err != nil {
 		return err
@@ -920,12 +953,12 @@ func (ann *routerAnnounce) decode(data []byte) error {
 // This is the value stored in a key,value map
 
 type routerInfo struct {
-	parent publicKey
+	parent domain
 	routerSigRes
 	sig signature
 }
 
-func (info *routerInfo) getAnnounce(key publicKey) *routerAnnounce {
+func (info *routerInfo) getAnnounce(key domain) *routerAnnounce {
 	return &routerAnnounce{
 		key:          key,
 		parent:       info.parent,

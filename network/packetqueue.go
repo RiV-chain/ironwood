@@ -8,8 +8,8 @@ import (
 type pqPacket interface {
 	wireEncodeable
 	wireType() wirePacketType
-	sourceKey() publicKey
-	destKey() publicKey
+	sourceKey() domain
+	destKey() domain
 }
 
 type pqPacketInfo struct {
@@ -19,13 +19,13 @@ type pqPacketInfo struct {
 }
 
 type pqSource struct {
-	key   publicKey
+	key   domain
 	infos []pqPacketInfo
 	size  uint64
 }
 
 type pqDest struct {
-	key     publicKey
+	key     domain
 	sources []pqSource
 	size    uint64
 }

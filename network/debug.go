@@ -97,7 +97,7 @@ func (d *Debug) GetTree() (infos []DebugTreeInfo) {
 		for key, dinfo := range d.c.router.infos {
 			var info DebugTreeInfo
 			info.Key = append(info.Key[:0], key[:]...)
-			info.Parent = append(info.Parent[:0], dinfo.parent[:]...)
+			info.Parent = append(info.Parent[:0], dinfo.parent.Name[:]...)
 			info.Sequence = dinfo.seq
 			infos = append(infos, info)
 		}
@@ -138,9 +138,9 @@ func (d *Debug) SetDebugLookupLogger(logger func(DebugLookupInfo)) {
 	phony.Block(&d.c.router, func() {
 		d.c.router.pathfinder.logger = func(lookup *pathLookup) {
 			info := DebugLookupInfo{
-				Key:    append(ed25519.PublicKey(nil), lookup.source[:]...),
+				Key:    append(ed25519.PublicKey(nil), lookup.source.Name[:]...),
 				Path:   make([]uint64, 0, len(lookup.from)),
-				Target: append(ed25519.PublicKey(nil), lookup.dest[:]...),
+				Target: append(ed25519.PublicKey(nil), lookup.dest.Name[:]...),
 			}
 			for _, p := range lookup.from {
 				info.Path = append(info.Path, uint64(p))
