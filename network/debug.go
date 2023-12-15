@@ -27,7 +27,6 @@ type DebugLabelInfo struct {
 }
 
 type DebugSelfInfo struct {
-	Key            ed25519.PublicKey
 	Domain         types.Domain
 	RoutingEntries uint64
 }
@@ -44,31 +43,30 @@ type DebugPeerInfo struct {
 }
 
 type DebugTreeInfo struct {
-	Key      ed25519.PublicKey
-	Parent   ed25519.PublicKey
+	Domain   types.Domain
+	Parent   types.Domain
 	Sequence uint64
 }
 
 type DebugPathInfo struct {
-	Key      ed25519.PublicKey
+	Domain   types.Domain
 	Path     []uint64
 	Sequence uint64
 }
 
 type DebugBloomInfo struct {
-	Key  ed25519.PublicKey
-	Send [bloomFilterU]uint64
-	Recv [bloomFilterU]uint64
+	Domain types.Domain
+	Send   [bloomFilterU]uint64
+	Recv   [bloomFilterU]uint64
 }
 
 type DebugLookupInfo struct {
-	Key    ed25519.PublicKey
+	Domain types.Domain
 	Path   []uint64
-	Target ed25519.PublicKey
+	Target types.Domain
 }
 
 func (d *Debug) GetSelf() (info DebugSelfInfo) {
-	info.Key = append(info.Key[:0], d.c.crypto.publicKey[:]...)
 	info.Domain = types.Domain(d.c.crypto.domain)
 	phony.Block(&d.c.router, func() {
 		info.RoutingEntries = uint64(len(d.c.router.infos))
@@ -94,10 +92,11 @@ func (d *Debug) GetPeers() (infos []DebugPeerInfo) {
 
 func (d *Debug) GetTree() (infos []DebugTreeInfo) {
 	phony.Block(&d.c.router, func() {
+		var zeros [ed25519.PublicKeySize]byte
 		for key, dinfo := range d.c.router.infos {
 			var info DebugTreeInfo
-			info.Key = append(info.Key[:0], key[:]...)
-			info.Parent = append(info.Parent[:0], dinfo.parent.Name[:]...)
+			info.Domain = types.Domain{Key: zeros[:], Name: key[:]}
+			info.Parent = types.Domain(dinfo.parent)
 			info.Sequence = dinfo.seq
 			infos = append(infos, info)
 		}
@@ -107,9 +106,10 @@ func (d *Debug) GetTree() (infos []DebugTreeInfo) {
 
 func (d *Debug) GetPaths() (infos []DebugPathInfo) {
 	phony.Block(&d.c.router, func() {
+		var zeros [ed25519.PublicKeySize]byte
 		for key, pinfo := range d.c.router.pathfinder.paths {
 			var info DebugPathInfo
-			info.Key = append(info.Key[:0], key[:]...)
+			info.Domain = types.Domain{Key: zeros[:], Name: key[:]}
 			info.Path = make([]uint64, 0, len(pinfo.path))
 			for _, port := range pinfo.path {
 				info.Path = append(info.Path, uint64(port))
@@ -123,9 +123,10 @@ func (d *Debug) GetPaths() (infos []DebugPathInfo) {
 
 func (d *Debug) GetBlooms() (infos []DebugBloomInfo) {
 	phony.Block(&d.c.router, func() {
+		var zeros [ed25519.PublicKeySize]byte
 		for key, binfo := range d.c.router.blooms.blooms {
 			var info DebugBloomInfo
-			info.Key = append(info.Key[:0], key[:]...)
+			info.Domain = types.Domain{Key: zeros[:], Name: key[:]}
 			copy(info.Send[:], binfo.send.filter.BitSet().Bytes())
 			copy(info.Recv[:], binfo.recv.filter.BitSet().Bytes())
 			infos = append(infos, info)
@@ -138,9 +139,9 @@ func (d *Debug) SetDebugLookupLogger(logger func(DebugLookupInfo)) {
 	phony.Block(&d.c.router, func() {
 		d.c.router.pathfinder.logger = func(lookup *pathLookup) {
 			info := DebugLookupInfo{
-				Key:    append(ed25519.PublicKey(nil), lookup.source.Name[:]...),
+				Domain: types.Domain(lookup.source),
 				Path:   make([]uint64, 0, len(lookup.from)),
-				Target: append(ed25519.PublicKey(nil), lookup.dest.Name[:]...),
+				Target: types.Domain(lookup.dest),
 			}
 			for _, p := range lookup.from {
 				info.Path = append(info.Path, uint64(p))
