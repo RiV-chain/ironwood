@@ -158,7 +158,7 @@ func (pf *pathfinder) _handleNotify(fromKey domain, notify *pathNotify) {
 		defer pf._handleTraffic(tr)
 	}
 	pf.paths[notify.source.name()] = info
-	pf.router.core.config.pathNotify(notify.source.name())
+	pf.router.core.config.pathNotify(types.Domain(notify.source))
 }
 
 func (pf *pathfinder) _rumorSendLookup(dest domain) {

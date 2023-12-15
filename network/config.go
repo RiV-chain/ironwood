@@ -2,6 +2,8 @@ package network
 
 import (
 	"time"
+
+	"github.com/Arceliar/ironwood/types"
 )
 
 type config struct {
@@ -11,7 +13,7 @@ type config struct {
 	peerTimeout        time.Duration
 	peerMaxMessageSize uint64
 	bloomTransform     func(name) name
-	pathNotify         func(name)
+	pathNotify         func(types.Domain)
 	pathTimeout        time.Duration
 	pathThrottle       time.Duration
 }
@@ -26,7 +28,7 @@ func configDefaults() Option {
 		c.peerTimeout = 3 * time.Second
 		c.peerMaxMessageSize = 1048576 // 1 megabyte
 		c.bloomTransform = func(key name) name { return key }
-		c.pathNotify = func(key name) {}
+		c.pathNotify = func(key types.Domain) {}
 		c.pathTimeout = time.Minute
 		c.pathThrottle = time.Second
 	}
@@ -68,7 +70,7 @@ func WithBloomTransform(xform func(key name) name) Option {
 	}
 }
 
-func WithPathNotify(notify func(key name)) Option {
+func WithPathNotify(notify func(key types.Domain)) Option {
 	return func(c *config) {
 		c.pathNotify = notify
 	}
