@@ -174,10 +174,8 @@ func (bs *blooms) _fixOnTree() {
 
 func (bs *blooms) xKey(key domain) name {
 	k := key
-	xfed := bs.router.core.config.bloomTransform(k.name())
-	var xform name
-	xform = xfed
-	return xform
+	xform := bs.router.core.config.bloomTransform(types.Domain(k))
+	return domain(xform).name()
 }
 
 func (bs *blooms) _addInfo(key name) {

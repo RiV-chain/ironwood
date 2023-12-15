@@ -12,7 +12,7 @@ type config struct {
 	peerKeepAliveDelay time.Duration
 	peerTimeout        time.Duration
 	peerMaxMessageSize uint64
-	bloomTransform     func(name) name
+	bloomTransform     func(types.Domain) types.Domain
 	pathNotify         func(types.Domain)
 	pathTimeout        time.Duration
 	pathThrottle       time.Duration
@@ -27,7 +27,7 @@ func configDefaults() Option {
 		c.peerKeepAliveDelay = time.Second
 		c.peerTimeout = 3 * time.Second
 		c.peerMaxMessageSize = 1048576 // 1 megabyte
-		c.bloomTransform = func(key name) name { return key }
+		c.bloomTransform = func(key types.Domain) types.Domain { return key }
 		c.pathNotify = func(key types.Domain) {}
 		c.pathTimeout = time.Minute
 		c.pathThrottle = time.Second
@@ -64,7 +64,7 @@ func WithPeerMaxMessageSize(size uint64) Option {
 	}
 }
 
-func WithBloomTransform(xform func(key name) name) Option {
+func WithBloomTransform(xform func(key types.Domain) types.Domain) Option {
 	return func(c *config) {
 		c.bloomTransform = xform
 	}
