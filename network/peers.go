@@ -22,13 +22,13 @@ type peers struct {
 	phony.Inbox // Used to create/remove peers
 	core        *core
 	ports       map[peerPort]struct{}
-	peers       map[publicKey]map[*peer]struct{}
+	peers       map[name]map[*peer]struct{}
 }
 
 func (ps *peers) init(c *core) {
 	ps.core = c
 	ps.ports = make(map[peerPort]struct{})
-	ps.peers = make(map[publicKey]map[*peer]struct{})
+	ps.peers = make(map[name]map[*peer]struct{})
 }
 
 func (ps *peers) addPeer(domain domain, conn net.Conn, prio uint8) (*peer, error) {
@@ -43,7 +43,7 @@ func (ps *peers) addPeer(domain domain, conn net.Conn, prio uint8) (*peer, error
 	}
 	phony.Block(ps, func() {
 		var port peerPort
-		if keyPeers, isIn := ps.peers[domain.publicKey()]; isIn {
+		if keyPeers, isIn := ps.peers[domain.name()]; isIn {
 			for p := range keyPeers {
 				port = p.port
 				break
@@ -58,7 +58,7 @@ func (ps *peers) addPeer(domain domain, conn net.Conn, prio uint8) (*peer, error
 				break
 			}
 			ps.ports[port] = struct{}{}
-			ps.peers[domain.publicKey()] = make(map[*peer]struct{})
+			ps.peers[domain.name()] = make(map[*peer]struct{})
 		}
 		p = new(peer)
 		p.peers = ps
@@ -72,7 +72,7 @@ func (ps *peers) addPeer(domain domain, conn net.Conn, prio uint8) (*peer, error
 		p.writer.peer = p
 		p.writer.wbuf = bufio.NewWriter(p.conn)
 		p.time = time.Now()
-		ps.peers[p.domain.publicKey()][p] = struct{}{}
+		ps.peers[p.domain.name()][p] = struct{}{}
 	})
 	return p, err
 }
@@ -80,13 +80,13 @@ func (ps *peers) addPeer(domain domain, conn net.Conn, prio uint8) (*peer, error
 func (ps *peers) removePeer(p *peer) error {
 	var err error
 	phony.Block(ps, func() {
-		kps := ps.peers[p.domain.publicKey()]
+		kps := ps.peers[p.domain.name()]
 		if _, isIn := kps[p]; !isIn {
 			err = types.ErrPeerNotFound
 		} else {
 			delete(kps, p)
 			if len(kps) == 0 {
-				delete(ps.peers, p.domain.publicKey())
+				delete(ps.peers, p.domain.name())
 				delete(ps.ports, p.port)
 			}
 		}
