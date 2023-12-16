@@ -22,7 +22,7 @@ type PacketConn struct {
 
 // NewPacketConn returns a *PacketConn struct which implements the types.PacketConn interface.
 func NewPacketConn(secret ed25519.PrivateKey, domain types.Domain, options ...network.Option) (*PacketConn, error) {
-	npc, err := network.NewPacketConn(secret, domain)
+	npc, err := network.NewPacketConn(secret, domain, options...)
 	if err != nil {
 		return nil, err
 	}
