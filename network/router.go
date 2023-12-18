@@ -585,7 +585,7 @@ func (r *router) handleTraffic(from phony.Actor, tr *traffic) {
 	r.Act(from, func() {
 		if p := r._lookup(tr.path, &tr.watermark); p != nil {
 			p.sendTraffic(r, tr)
-		} else if tr.dest.publicKey() == r.core.crypto.publicKey {
+		} else if tr.dest.equal(r.core.crypto.domain) {
 			r.pathfinder._resetTimeout(tr.source.name())
 			r.core.pconn.handleTraffic(r, tr)
 		} else {
