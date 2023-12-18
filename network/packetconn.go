@@ -62,7 +62,10 @@ func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
 	if len(p) < len(tr.payload) {
 		n = len(p)
 	}
-	fromKey := domain(tr.source) // copy, since tr is going back in the pool
+	fromKey := domain{
+		Name: tr.source.Name,
+		Key:  tr.source.Key,
+	} // copy, since tr is going back in the pool
 	from = fromKey.addr()
 	freeTraffic(tr)
 	return
