@@ -68,7 +68,11 @@ func (m *netManager) read() {
 			} else {
 				msg := allocBytes(n)
 				copy(msg, buf[:n])
-				fromDomain := types.Domain(from.(types.Addr))
+				fD := types.Domain(from.(types.Addr))
+				fromDomain := types.Domain{
+					Name: fD.Name,
+					Key:  fD.Key,
+				}
 				m.pc.sessions.handleData(m, fromDomain, msg)
 				m.Act(nil, rl) // continue to loop
 			}
