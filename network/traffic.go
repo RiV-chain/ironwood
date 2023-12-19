@@ -27,8 +27,8 @@ func (tr *traffic) copyFrom(original *traffic) {
 	*tr = *original
 	tr.path = append(tmp.path[:0], tr.path...)
 	tr.from = append(tmp.from[:0], tr.from...)
-	//tr.source = domain(tmp.source)
-	//tr.dest = domain(tmp.dest)
+	tr.source = domain(tmp.source)
+	tr.dest = domain(tmp.dest)
 	tr.watermark = tmp.watermark
 	tr.payload = append(tmp.payload[:0], tr.payload...)
 }
