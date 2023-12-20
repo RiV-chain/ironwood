@@ -1,8 +1,6 @@
 package encrypted
 
 import (
-	"crypto/ed25519"
-
 	"github.com/Arceliar/ironwood/types"
 	"github.com/Arceliar/phony"
 )
@@ -70,13 +68,7 @@ func (m *netManager) read() {
 			} else {
 				msg := allocBytes(n)
 				copy(msg, buf[:n])
-				fD := from.(types.Addr)
-				fromDomain := types.Domain{
-					Key:  make([]byte, ed25519.PublicKeySize),
-					Name: make([]byte, ed25519.PublicKeySize),
-				}
-				copy(fromDomain.Name[:], fD.Name)
-				copy(fromDomain.Key[:], fD.Key)
+				fromDomain := types.Domain(from.(types.Addr))
 				m.pc.sessions.handleData(m, fromDomain, msg)
 				m.Act(nil, rl) // continue to loop
 			}
