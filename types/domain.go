@@ -77,6 +77,14 @@ func (publicKey PublicKey) Verify(message []byte, sig *Signature) bool {
 	return ed25519.Verify(publicKey[:], message, sig[:])
 }
 
+func (publicKey PublicKey) ToSlice() []byte {
+	return publicKey[:]
+}
+
+func (publicKey PublicKey) ToEd() ed25519.PublicKey {
+	return publicKey[:]
+}
+
 func (domain Domain) Verify(message []byte, sig *Signature) bool {
 	return ed25519.Verify(domain.Key[:], message, sig[:])
 }
