@@ -68,7 +68,10 @@ func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	if uint64(len(p)) > pc.MTU() {
 		return 0, types.ErrOversizedMessage
 	}
-	destDomain := types.Domain(dest)
+	destDomain := types.Domain{
+		Key:  dest.Key[:],
+		Name: dest.Name[:],
+	}
 	n = len(p)
 	pc.sessions.writeTo(destDomain, append(allocBytes(0), p...))
 	return
