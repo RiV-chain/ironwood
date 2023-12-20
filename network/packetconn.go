@@ -65,7 +65,7 @@ func (pc *PacketConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
 	fromKey := initDomain()
 	// copy, since tr is going back in the pool
 	copy(fromKey.Key[:], tr.source.Key)
-	copy(fromKey.Name[:], tr.source.Name)
+	fromKey.Name = tr.source.Name
 	from = fromKey.addr()
 	freeTraffic(tr)
 	return
@@ -91,7 +91,7 @@ func (pc *PacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	tr := allocTraffic()
 	tr.source = pc.core.crypto.domain
 	copy(tr.dest.Key[:], destDomain.Key)
-	copy(tr.dest.Name[:], destDomain.Name)
+	tr.dest.Name = destDomain.Name
 	tr.watermark = ^uint64(0)
 	tr.payload = append(tr.payload, p...)
 	pc.core.router.sendTraffic(tr)

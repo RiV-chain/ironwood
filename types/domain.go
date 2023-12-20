@@ -1,7 +1,6 @@
 package types
 
 import (
-	"bytes"
 	"crypto/ed25519"
 	"strings"
 )
@@ -9,24 +8,26 @@ import (
 //Domain type for the Mesh
 
 type Domain struct {
-	Name []byte
+	Name [ed25519.PublicKeySize]byte
 	Key  ed25519.PublicKey
 }
 
 func (a Domain) Equal(comparedDomain Domain) bool {
-	return bytes.Equal(a.Name, comparedDomain.Name) // && a.Key.Equal(comparedDomain.Key)
+	return a.Name == comparedDomain.Name
 }
 
 func NewDomain(name string, key ed25519.PublicKey) Domain {
-	n := strings.ToLower(name)
+	s := strings.ToLower(name)
+	var n [ed25519.PublicKeySize]byte
+	copy(n[:], []byte(s))
 	return Domain{
 		Key:  key,
-		Name: append([]byte(n), make([]byte, ed25519.PublicKeySize-len([]byte(n)))...),
+		Name: n,
 	}
 }
 
 func (a Domain) GetNormalizedName() []byte {
-	return truncateZeroBytes(a.Name)
+	return truncateZeroBytes(a.Name[:])
 }
 
 func truncateZeroBytes(data []byte) []byte {

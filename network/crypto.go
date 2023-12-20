@@ -25,16 +25,19 @@ type crypto struct {
 }
 
 func initDomain() domain {
+	var n [publicKeySize]byte
 	return domain{
 		Key:  make([]byte, publicKeySize),
-		Name: make([]byte, publicKeySize),
+		Name: n,
 	}
 }
 
 func newDomain(name string, key ed25519.PublicKey) domain {
+	var n [publicKeySize]byte
+	copy(n[:], []byte(name))
 	return domain{
 		Key:  key,
-		Name: append([]byte(name), make([]byte, publicKeySize-len([]byte(name)))...),
+		Name: n,
 	}
 }
 
@@ -82,9 +85,7 @@ func (domain domain) publicKey() publicKey {
 }
 
 func (domain domain) name() name {
-	var name [32]byte
-	copy(name[:], domain.Name)
-	return name
+	return domain.Name
 }
 
 func (c *crypto) init(secret ed25519.PrivateKey, domain_ types.Domain) {
