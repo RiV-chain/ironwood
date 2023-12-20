@@ -12,26 +12,26 @@ const pathfinderTrafficCache = true
 type pathfinder struct {
 	router *router
 	info   pathNotifyInfo
-	paths  map[name]pathInfo
-	rumors map[name]pathRumor
+	paths  map[types.Name]pathInfo
+	rumors map[types.Name]pathRumor
 	logger func(*pathLookup)
 }
 
 func (pf *pathfinder) init(r *router) {
 	pf.router = r
-	pf.info.sign(pf.router.core.crypto.privateKey)
-	pf.paths = make(map[name]pathInfo)
-	pf.rumors = make(map[name]pathRumor)
+	pf.info.sign(pf.router.core.crypto.PrivateKey)
+	pf.paths = make(map[types.Name]pathInfo)
+	pf.rumors = make(map[types.Name]pathRumor)
 }
 
-func (pf *pathfinder) _sendLookup(dest domain) {
-	if info, isIn := pf.paths[dest.name()]; isIn {
+func (pf *pathfinder) _sendLookup(dest types.Domain) {
+	if info, isIn := pf.paths[dest.Name]; isIn {
 		if time.Since(info.reqTime) < pf.router.core.config.pathThrottle {
 			// Don't flood with request, wait a bit
 			return
 		}
 	}
-	selfKey := pf.router.core.crypto.domain
+	selfKey := pf.router.core.crypto.Domain
 	_, from := pf.router._getRootAndPath(selfKey)
 	lookup := pathLookup{
 		source: selfKey,
@@ -43,14 +43,14 @@ func (pf *pathfinder) _sendLookup(dest domain) {
 
 func (pf *pathfinder) handleLookup(p *peer, lookup *pathLookup) {
 	pf.router.Act(p, func() {
-		if !pf.router.blooms._isOnTree(p.domain.name()) {
+		if !pf.router.blooms._isOnTree(p.domain.Name) {
 			return
 		}
 		pf._handleLookup(p.domain, lookup)
 	})
 }
 
-func (pf *pathfinder) _handleLookup(fromKey domain, lookup *pathLookup) {
+func (pf *pathfinder) _handleLookup(fromKey types.Domain, lookup *pathLookup) {
 	if pf.logger != nil {
 		pf.logger(lookup)
 	}
@@ -58,15 +58,15 @@ func (pf *pathfinder) _handleLookup(fromKey domain, lookup *pathLookup) {
 	pf.router.blooms._sendMulticast(lookup, fromKey, lookup.dest)
 	// Check if we should send a response too
 	dx := pf.router.blooms.xKey(lookup.dest)
-	sx := pf.router.blooms.xKey(pf.router.core.crypto.domain)
+	sx := pf.router.blooms.xKey(pf.router.core.crypto.Domain)
 	if dx == sx {
 		// We match, send a response
 		// TODO? throttle this per dest that we're sending a response to?
-		_, path := pf.router._getRootAndPath(pf.router.core.crypto.domain)
+		_, path := pf.router._getRootAndPath(pf.router.core.crypto.Domain)
 		notify := pathNotify{
 			path:      lookup.from,
 			watermark: ^uint64(0),
-			source:    pf.router.core.crypto.domain,
+			source:    pf.router.core.crypto.Domain,
 			dest:      lookup.source,
 			info: pathNotifyInfo{
 				seq:  uint64(time.Now().Unix()), //pf.info.seq,
@@ -75,7 +75,7 @@ func (pf *pathfinder) _handleLookup(fromKey domain, lookup *pathLookup) {
 		}
 		if !pf.info.equal(notify.info) {
 			//notify.info.seq++
-			notify.info.sign(pf.router.core.crypto.privateKey)
+			notify.info.sign(pf.router.core.crypto.PrivateKey)
 			pf.info = notify.info
 		} else {
 			notify.info = pf.info
@@ -90,19 +90,19 @@ func (pf *pathfinder) handleNotify(p *peer, notify *pathNotify) {
 	})
 }
 
-func (pf *pathfinder) _handleNotify(fromKey domain, notify *pathNotify) {
+func (pf *pathfinder) _handleNotify(fromKey types.Domain, notify *pathNotify) {
 	if p := pf.router._lookup(notify.path, &notify.watermark); p != nil {
 		p.sendPathNotify(pf.router, notify)
 		return
 	}
 	// Check if we should accept this response
-	if !notify.dest.equal(pf.router.core.crypto.domain) {
+	if !notify.dest.Equal(pf.router.core.crypto.Domain) {
 		return
 	}
 	var info pathInfo
 	var isIn bool
 	// Note that we need to res.check() in every case (as soon as success is otherwise inevitable)
-	if info, isIn = pf.paths[notify.source.name()]; isIn {
+	if info, isIn = pf.paths[notify.source.Name]; isIn {
 		if notify.info.seq <= info.seq {
 			// This isn't newer than the last seq we received, so drop it
 			return
@@ -129,9 +129,9 @@ func (pf *pathfinder) _handleNotify(fromKey domain, notify *pathNotify) {
 		var timer *time.Timer
 		timer = time.AfterFunc(pf.router.core.config.pathTimeout, func() {
 			pf.router.Act(nil, func() {
-				if info := pf.paths[key.name()]; info.timer == timer {
+				if info := pf.paths[key.Name]; info.timer == timer {
 					timer.Stop()
-					delete(pf.paths, key.name())
+					delete(pf.paths, key.Name)
 					if info.traffic != nil {
 						freeTraffic(info.traffic)
 					}
@@ -142,7 +142,7 @@ func (pf *pathfinder) _handleNotify(fromKey domain, notify *pathNotify) {
 			reqTime: time.Now(),
 			timer:   timer,
 		}
-		if rumor := pf.rumors[xform]; rumor.traffic != nil && rumor.traffic.dest.equal(notify.source) {
+		if rumor := pf.rumors[xform]; rumor.traffic != nil && rumor.traffic.dest.Equal(notify.source) {
 			info.traffic = rumor.traffic
 			rumor.traffic = nil
 			pf.rumors[xform] = rumor
@@ -157,11 +157,11 @@ func (pf *pathfinder) _handleNotify(fromKey domain, notify *pathNotify) {
 		// We defer so it happens after we've store the updated info in the map
 		defer pf._handleTraffic(tr)
 	}
-	pf.paths[notify.source.name()] = info
+	pf.paths[notify.source.Name] = info
 	pf.router.core.config.pathNotify(types.Domain(notify.source))
 }
 
-func (pf *pathfinder) _rumorSendLookup(dest domain) {
+func (pf *pathfinder) _rumorSendLookup(dest types.Domain) {
 	xform := pf.router.blooms.xKey(dest)
 	if rumor, isIn := pf.rumors[xform]; isIn {
 		if time.Since(rumor.sendTime) < pf.router.core.config.pathThrottle {
@@ -193,9 +193,9 @@ func (pf *pathfinder) _rumorSendLookup(dest domain) {
 
 func (pf *pathfinder) _handleTraffic(tr *traffic) {
 	const cache = pathfinderTrafficCache // TODO make this unconditional, this is just to easily toggle the cache on/off for now
-	if info, isIn := pf.paths[tr.dest.name()]; isIn {
+	if info, isIn := pf.paths[tr.dest.Name]; isIn {
 		tr.path = append(tr.path[:0], info.path...)
-		_, from := pf.router._getRootAndPath(pf.router.core.crypto.domain)
+		_, from := pf.router._getRootAndPath(pf.router.core.crypto.Domain)
 		tr.from = append(tr.from[:0], from...)
 		if cache {
 			if info.traffic != nil {
@@ -203,7 +203,7 @@ func (pf *pathfinder) _handleTraffic(tr *traffic) {
 			}
 			info.traffic = allocTraffic()
 			info.traffic.copyFrom(tr)
-			pf.paths[tr.dest.name()] = info
+			pf.paths[tr.dest.Name] = info
 		}
 		pf.router.handleTraffic(nil, tr)
 	} else {
@@ -240,12 +240,12 @@ func (pf *pathfinder) _handleBroken(broken *pathBroken) {
 		return
 	}
 	// Check if we should accept this pathBroken
-	if !broken.source.equal(pf.router.core.crypto.domain) {
+	if !broken.source.Equal(pf.router.core.crypto.Domain) {
 		return
 	}
-	if info, isIn := pf.paths[broken.dest.name()]; isIn {
+	if info, isIn := pf.paths[broken.dest.Name]; isIn {
 		info.broken = true
-		pf.paths[broken.dest.name()] = info
+		pf.paths[broken.dest.Name] = info
 		pf._sendLookup(broken.dest) // Throttled inside this function
 	}
 }
@@ -256,7 +256,7 @@ func (pf *pathfinder) handleBroken(p *peer, broken *pathBroken) {
 	})
 }
 
-func (pf *pathfinder) _resetTimeout(key name) {
+func (pf *pathfinder) _resetTimeout(key types.Name) {
 	// Note: We should call this when we receive a packet from this destination
 	// We should *not* reset just because we tried to send a packet
 	// We need things to time out eventually if e.g. a node restarts and resets its seqs
@@ -292,8 +292,8 @@ type pathRumor struct {
  **************/
 
 type pathLookup struct {
-	source domain
-	dest   domain
+	source types.Domain
+	dest   types.Domain
 	from   []peerPort
 }
 
@@ -322,8 +322,8 @@ func (lookup *pathLookup) encode(out []byte) ([]byte, error) {
 
 func (lookup *pathLookup) decode(data []byte) error {
 	tmp := pathLookup{
-		source: initDomain(),
-		dest:   initDomain(),
+		source: types.InitDomain(),
+		dest:   types.InitDomain(),
 	}
 	orig := data
 	if !wireChopSlice(tmp.source.Key[:], &orig) {
@@ -349,11 +349,11 @@ func (lookup *pathLookup) wireType() wirePacketType {
 	return wireProtoPathLookup
 }
 
-func (lookup *pathLookup) sourceKey() domain {
+func (lookup *pathLookup) sourceKey() types.Domain {
 	return lookup.source
 }
 
-func (lookup *pathLookup) destKey() domain {
+func (lookup *pathLookup) destKey() types.Domain {
 	return lookup.dest
 }
 
@@ -363,8 +363,8 @@ func (lookup *pathLookup) destKey() domain {
 
 type pathNotifyInfo struct {
 	seq  uint64
-	path []peerPort // Path from root to source, aka coords, zero-terminated
-	sig  signature  // signature from the source key
+	path []peerPort      // Path from root to source, aka coords, zero-terminated
+	sig  types.Signature // signature from the source key
 }
 
 // equal returns true if the pathResponseInfos are equal, inspecting the contents of the path and ignoring the sig
@@ -389,8 +389,8 @@ func (info *pathNotifyInfo) bytesForSig() []byte {
 	return out
 }
 
-func (info *pathNotifyInfo) sign(key privateKey) {
-	info.sig = key.sign(info.bytesForSig())
+func (info *pathNotifyInfo) sign(key types.PrivateKey) {
+	info.sig = key.Sign(info.bytesForSig())
 }
 
 func (info *pathNotifyInfo) size() int {
@@ -435,13 +435,13 @@ func (info *pathNotifyInfo) decode(data []byte) error {
 type pathNotify struct {
 	path      []peerPort
 	watermark uint64
-	source    domain // who sent the response, not who resquested it
-	dest      domain // exact key we are sending response to
+	source    types.Domain // who sent the response, not who resquested it
+	dest      types.Domain // exact key we are sending response to
 	info      pathNotifyInfo
 }
 
 func (notify *pathNotify) check() bool {
-	return notify.source.verify(notify.info.bytesForSig(), &notify.info.sig)
+	return notify.source.Verify(notify.info.bytesForSig(), &notify.info.sig)
 }
 
 func (notify *pathNotify) size() int {
@@ -476,8 +476,8 @@ func (notify *pathNotify) encode(out []byte) ([]byte, error) {
 
 func (notify *pathNotify) decode(data []byte) error {
 	tmp := pathNotify{
-		source: initDomain(),
-		dest:   initDomain(),
+		source: types.InitDomain(),
+		dest:   types.InitDomain(),
 	}
 	orig := data
 	if !wireChopPath(&tmp.path, &orig) {
@@ -503,11 +503,11 @@ func (notify *pathNotify) wireType() wirePacketType {
 	return wireProtoPathNotify
 }
 
-func (notify *pathNotify) sourceKey() domain {
+func (notify *pathNotify) sourceKey() types.Domain {
 	return notify.source
 }
 
-func (notify *pathNotify) destKey() domain {
+func (notify *pathNotify) destKey() types.Domain {
 	return notify.dest
 }
 
@@ -518,8 +518,8 @@ func (notify *pathNotify) destKey() domain {
 type pathBroken struct {
 	path      []peerPort
 	watermark uint64
-	source    domain
-	dest      domain
+	source    types.Domain
+	dest      types.Domain
 }
 
 func (broken *pathBroken) size() int {
@@ -549,8 +549,8 @@ func (broken *pathBroken) encode(out []byte) ([]byte, error) {
 
 func (broken *pathBroken) decode(data []byte) error {
 	tmp := pathBroken{
-		source: initDomain(),
-		dest:   initDomain(),
+		source: types.InitDomain(),
+		dest:   types.InitDomain(),
 	}
 	orig := data
 	if !wireChopPath(&tmp.path, &orig) {
@@ -576,10 +576,10 @@ func (broken *pathBroken) wireType() wirePacketType {
 	return wireProtoPathBroken
 }
 
-func (broken *pathBroken) sourceKey() domain {
+func (broken *pathBroken) sourceKey() types.Domain {
 	return broken.source
 }
 
-func (broken *pathBroken) destKey() domain {
+func (broken *pathBroken) destKey() types.Domain {
 	return broken.dest
 }

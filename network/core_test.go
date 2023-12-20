@@ -20,8 +20,8 @@ import (
 func TestTwoNodes(t *testing.T) {
 	pubA, privA, _ := ed25519.GenerateKey(nil)
 	pubB, privB, _ := ed25519.GenerateKey(nil)
-	dA := types.Domain(newDomain("aaaa", pubA))
-	dB := types.Domain(newDomain("bbbb", pubB))
+	dA := types.NewDomain("aaaa", pubA)
+	dB := types.NewDomain("bbbb", pubB)
 	a, _ := NewPacketConn(privA, dA)
 	b, _ := NewPacketConn(privB, dB)
 	cA, cB := newDummyConn(pubA, pubB)
@@ -79,7 +79,7 @@ func TestLineNetwork(t *testing.T) {
 	var conns []*PacketConn
 	for idx := 0; idx < 8; idx++ {
 		pub, priv, _ := ed25519.GenerateKey(nil)
-		d := types.Domain(newDomain("d"+strconv.Itoa(idx), pub))
+		d := types.NewDomain("d"+strconv.Itoa(idx), pub)
 		conn, err := NewPacketConn(priv, d)
 		if err != nil {
 			panic(err)
@@ -95,7 +95,7 @@ func TestLineNetwork(t *testing.T) {
 		here := conns[idx]
 		keyA := types.Domain(prev.LocalAddr().(types.Addr))
 		keyB := types.Domain(here.LocalAddr().(types.Addr))
-		linkA, linkB := newDummyConn(keyA.Key, keyB.Key)
+		linkA, linkB := newDummyConn(keyA.Key[:], keyB.Key[:])
 		defer linkA.Close()
 		defer linkB.Close()
 		go func() {
@@ -186,7 +186,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 	wait := make(chan struct{})
 	for idx := 0; idx < 8; idx++ {
 		pub, priv, _ := ed25519.GenerateKey(nil)
-		d := types.Domain(newDomain("d"+strconv.Itoa(idx), pub))
+		d := types.NewDomain("d"+strconv.Itoa(idx), pub)
 		conn, err := NewPacketConn(priv, d)
 		if err != nil {
 			panic(err)
@@ -196,7 +196,7 @@ func TestRandomTreeNetwork(t *testing.T) {
 			p := conns[pIdx]
 			a := types.Domain(conn.LocalAddr().(types.Addr))
 			b := types.Domain(p.LocalAddr().(types.Addr))
-			linkA, linkB := newDummyConn(a.Key, b.Key)
+			linkA, linkB := newDummyConn(a.Key[:], b.Key[:])
 			defer linkA.Close()
 			defer linkB.Close()
 			go func() {
@@ -290,20 +290,20 @@ func waitForRoot(conns []*PacketConn, timeout time.Duration) {
 		if time.Since(begin) > timeout {
 			panic("timeout")
 		}
-		var root domain
+		var root types.Domain
 		for _, conn := range conns {
 			phony.Block(&conn.core.router, func() {
-				root, _ = conn.core.router._getRootAndDists(conn.core.crypto.domain)
+				root, _ = conn.core.router._getRootAndDists(conn.core.crypto.Domain)
 			})
 			break
 		}
 		var bad bool
 		for _, conn := range conns {
-			var croot domain
+			var croot types.Domain
 			phony.Block(&conn.core.router, func() {
-				croot, _ = conn.core.router._getRootAndDists(conn.core.crypto.domain)
+				croot, _ = conn.core.router._getRootAndDists(conn.core.crypto.Domain)
 			})
-			if !croot.equal(root) {
+			if !croot.Equal(root) {
 				bad = true
 				break
 			}

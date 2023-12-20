@@ -22,16 +22,16 @@ type peers struct {
 	phony.Inbox // Used to create/remove peers
 	core        *core
 	ports       map[peerPort]struct{}
-	peers       map[name]map[*peer]struct{}
+	peers       map[types.Name]map[*peer]struct{}
 }
 
 func (ps *peers) init(c *core) {
 	ps.core = c
 	ps.ports = make(map[peerPort]struct{})
-	ps.peers = make(map[name]map[*peer]struct{})
+	ps.peers = make(map[types.Name]map[*peer]struct{})
 }
 
-func (ps *peers) addPeer(domain domain, conn net.Conn, prio uint8) (*peer, error) {
+func (ps *peers) addPeer(domain types.Domain, conn net.Conn, prio uint8) (*peer, error) {
 	var p *peer
 	var err error
 	ps.core.pconn.closeMutex.Lock()
@@ -43,7 +43,7 @@ func (ps *peers) addPeer(domain domain, conn net.Conn, prio uint8) (*peer, error
 	}
 	phony.Block(ps, func() {
 		var port peerPort
-		if keyPeers, isIn := ps.peers[domain.name()]; isIn {
+		if keyPeers, isIn := ps.peers[domain.Name]; isIn {
 			for p := range keyPeers {
 				port = p.port
 				break
@@ -58,7 +58,7 @@ func (ps *peers) addPeer(domain domain, conn net.Conn, prio uint8) (*peer, error
 				break
 			}
 			ps.ports[port] = struct{}{}
-			ps.peers[domain.name()] = make(map[*peer]struct{})
+			ps.peers[domain.Name] = make(map[*peer]struct{})
 		}
 		p = new(peer)
 		p.peers = ps
@@ -72,7 +72,7 @@ func (ps *peers) addPeer(domain domain, conn net.Conn, prio uint8) (*peer, error
 		p.writer.peer = p
 		p.writer.wbuf = bufio.NewWriter(p.conn)
 		p.time = time.Now()
-		ps.peers[p.domain.name()][p] = struct{}{}
+		ps.peers[p.domain.Name][p] = struct{}{}
 	})
 	return p, err
 }
@@ -80,13 +80,13 @@ func (ps *peers) addPeer(domain domain, conn net.Conn, prio uint8) (*peer, error
 func (ps *peers) removePeer(p *peer) error {
 	var err error
 	phony.Block(ps, func() {
-		kps := ps.peers[p.domain.name()]
+		kps := ps.peers[p.domain.Name]
 		if _, isIn := kps[p]; !isIn {
 			err = types.ErrPeerNotFound
 		} else {
 			delete(kps, p)
 			if len(kps) == 0 {
-				delete(ps.peers, p.domain.name())
+				delete(ps.peers, p.domain.Name)
 				delete(ps.ports, p.port)
 			}
 		}
@@ -99,7 +99,7 @@ type peer struct {
 	peers       *peers
 	conn        net.Conn
 	done        chan struct{}
-	domain      domain
+	domain      types.Domain
 	port        peerPort
 	prio        uint8
 	queue       packetQueue
@@ -317,7 +317,7 @@ func (p *peer) _handleSigRes(bs []byte) error {
 	if err := res.decode(bs); err != nil {
 		return err
 	}
-	if !res.check(p.peers.core.crypto.domain, p.domain) {
+	if !res.check(p.peers.core.crypto.Domain, p.domain) {
 		return types.ErrBadMessage
 	}
 	p.peers.core.router.handleResponse(p, p, res)

@@ -84,13 +84,13 @@ func (mgr *sessionManager) handleData(from phony.Actor, domain types.Domain, dat
 		case sessionTypeDummy:
 		case sessionTypeInit:
 			init := new(sessionInit)
-			if init.decrypt(&mgr.pc.secretBox, (*edPub)(domain.Key), data) {
+			if init.decrypt(&mgr.pc.secretBox, (*edPub)(domain.Key[:]), data) {
 				mgr._handleInit(domain, init)
 			}
 			freeBytes(data)
 		case sessionTypeAck:
 			ack := new(sessionAck)
-			if ack.decrypt(&mgr.pc.secretBox, (*edPub)(domain.Key), data) {
+			if ack.decrypt(&mgr.pc.secretBox, (*edPub)(domain.Key[:]), data) {
 				mgr._handleAck(domain, ack)
 			}
 			freeBytes(data)
@@ -178,13 +178,13 @@ func (mgr *sessionManager) _bufferAndInit(toDomain types.Domain, msg []byte) {
 }
 
 func (mgr *sessionManager) sendInit(toDomain types.Domain, init *sessionInit) {
-	if bs, err := init.encrypt(&mgr.pc.secretEd, (*edPub)(toDomain.Key)); err == nil {
+	if bs, err := init.encrypt(&mgr.pc.secretEd, (*edPub)(toDomain.Key[:])); err == nil {
 		mgr.pc.PacketConn.WriteTo(bs, types.Addr(toDomain))
 	}
 }
 
 func (mgr *sessionManager) sendAck(toDomain types.Domain, ack *sessionAck) {
-	if bs, err := ack.encrypt(&mgr.pc.secretEd, (*edPub)(toDomain.Key)); err == nil {
+	if bs, err := ack.encrypt(&mgr.pc.secretEd, (*edPub)(toDomain.Key[:])); err == nil {
 		mgr.pc.PacketConn.WriteTo(bs, types.Addr(toDomain))
 	}
 }
