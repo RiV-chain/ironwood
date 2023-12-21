@@ -1,7 +1,7 @@
 package network
 
 import (
-	"crypto/ed25519"
+	"github.com/oasisprotocol/curve25519-voi/primitives/ed25519"
 
 	"github.com/Arceliar/ironwood/types"
 )

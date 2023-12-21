@@ -9,11 +9,11 @@
 package e2c
 
 import (
-	"crypto/ed25519"
 	"crypto/sha512"
 	"math/big"
 
-	"golang.org/x/crypto/curve25519"
+	"github.com/oasisprotocol/curve25519-voi/primitives/ed25519"
+	"github.com/oasisprotocol/curve25519-voi/primitives/x25519"
 )
 
 var curve25519P, _ = new(big.Int).SetString("57896044618658097711785492504343953926634992332820282019728792003956564819949", 10)
@@ -22,7 +22,7 @@ func Ed25519PrivateKeyToCurve25519(pk ed25519.PrivateKey) []byte {
 	h := sha512.New()
 	h.Write(pk.Seed())
 	out := h.Sum(nil)
-	return out[:curve25519.ScalarSize]
+	return out[:x25519.ScalarSize]
 }
 
 func Ed25519PublicKeyToCurve25519(pk ed25519.PublicKey) []byte {
@@ -45,7 +45,7 @@ func Ed25519PublicKeyToCurve25519(pk ed25519.PublicKey) []byte {
 	u := y.Mul(y.Add(y, big.NewInt(1)), denom)
 	u.Mod(u, curve25519P)
 
-	out := make([]byte, curve25519.PointSize)
+	out := make([]byte, x25519.PointSize)
 	uBytes := u.Bytes()
 	for i, b := range uBytes {
 		out[len(uBytes)-i-1] = b

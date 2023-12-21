@@ -2,8 +2,9 @@ package network
 
 import (
 	"bytes"
-	"crypto/ed25519"
 	"errors"
+
+	"github.com/oasisprotocol/curve25519-voi/primitives/ed25519"
 
 	//"fmt"
 	"net"

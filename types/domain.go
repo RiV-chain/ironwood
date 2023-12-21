@@ -1,8 +1,9 @@
 package types
 
 import (
-	"crypto/ed25519"
 	"strings"
+
+	"github.com/oasisprotocol/curve25519-voi/primitives/ed25519"
 )
 
 //Domain type for the Mesh

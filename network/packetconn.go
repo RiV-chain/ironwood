@@ -1,11 +1,12 @@
 package network
 
 import (
-	"crypto/ed25519"
 	"errors"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/oasisprotocol/curve25519-voi/primitives/ed25519"
 
 	"github.com/Arceliar/phony"
 

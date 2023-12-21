@@ -2,13 +2,12 @@ package encrypted
 
 import (
 	"bytes"
-	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
 
-	"golang.org/x/crypto/nacl/box"
-
 	"github.com/Arceliar/ironwood/encrypted/internal/e2c"
+	"github.com/oasisprotocol/curve25519-voi/primitives/ed25519"
+	"golang.org/x/crypto/nacl/box"
 )
 
 /********

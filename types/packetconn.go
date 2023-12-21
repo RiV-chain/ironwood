@@ -1,8 +1,9 @@
 package types
 
 import (
-	"crypto/ed25519"
 	"net"
+
+	"github.com/oasisprotocol/curve25519-voi/primitives/ed25519"
 )
 
 type PacketConn interface {

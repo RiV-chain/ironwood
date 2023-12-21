@@ -1,8 +1,9 @@
 package encrypted
 
 import (
-	"crypto/ed25519"
 	"testing"
+
+	"github.com/oasisprotocol/curve25519-voi/primitives/ed25519"
 )
 
 func TestEdX25519(t *testing.T) {
