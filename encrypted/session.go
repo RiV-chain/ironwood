@@ -18,7 +18,7 @@ TODO:
 
 const (
 	sessionTimeout            = time.Minute
-	sessionTrafficOverheadMin = 1 + 1 + 1 + 1 + boxOverhead + boxPubSize // header, seq, seq, nonce
+	sessionTrafficOverheadMin = 1 + 1 + 1 + boxOverhead + boxPubSize // header, seq, seq, nonce
 	sessionTrafficOverhead    = sessionTrafficOverheadMin + 9 + 9 + 9
 	sessionInitSize           = 1 + boxPubSize + boxOverhead + edSigSize + boxPubSize + boxPubSize + 8 + 8
 	sessionAckSize            = sessionInitSize
@@ -80,7 +80,7 @@ func (mgr *sessionManager) handleData(from phony.Actor, domain types.Domain, dat
 		if len(data) == 0 {
 			return
 		}
-		switch data[0] {
+		switch data[3] {
 		case sessionTypeDummy:
 		case sessionTypeInit:
 			init := new(sessionInit)
@@ -305,8 +305,8 @@ func (info *sessionInfo) doSend(from phony.Actor, msg []byte) {
 		}
 		bs := allocBytes(sessionTrafficOverhead + len(msg))
 		defer freeBytes(bs)
-		bs[0] = sessionTypeTraffic
-		offset := 1
+		bs[3] = sessionTypeTraffic
+		offset := 0
 		offset += binary.PutUvarint(bs[offset:], info.localKeySeq)
 		offset += binary.PutUvarint(bs[offset:], info.remoteKeySeq)
 		offset += binary.PutUvarint(bs[offset:], info.sendNonce)
@@ -330,11 +330,11 @@ func (info *sessionInfo) doRecv(from phony.Actor, msg []byte) {
 	info.Act(from, func() {
 		orig := msg
 		defer freeBytes(orig)
-		if len(msg) < sessionTrafficOverheadMin || msg[0] != sessionTypeTraffic {
+		if len(msg) < sessionTrafficOverheadMin || msg[3] != sessionTypeTraffic {
 			return
 		}
-		offset := 1
-		remoteKeySeq, rksLen := binary.Uvarint(msg[offset:])
+		offset := 0
+		remoteKeySeq, rksLen := binary.Uvarint(msg)
 		if rksLen <= 0 {
 			return
 		}
