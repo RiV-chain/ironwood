@@ -38,14 +38,14 @@ const (
 type sessionManager struct {
 	phony.Inbox
 	pc       *PacketConn
-	sessions map[edPub]*sessionInfo
-	buffers  map[edPub]*sessionBuffer
+	sessions map[types.Name]*sessionInfo
+	buffers  map[types.Name]*sessionBuffer
 }
 
 func (mgr *sessionManager) init(pc *PacketConn) {
 	mgr.pc = pc
-	mgr.sessions = make(map[edPub]*sessionInfo)
-	mgr.buffers = make(map[edPub]*sessionBuffer)
+	mgr.sessions = make(map[types.Name]*sessionInfo)
+	mgr.buffers = make(map[types.Name]*sessionBuffer)
 }
 
 func (mgr *sessionManager) _newSession(domain types.Domain, recv, send boxPub, seq uint64) *sessionInfo {
@@ -54,18 +54,18 @@ func (mgr *sessionManager) _newSession(domain types.Domain, recv, send boxPub, s
 		info.mgr = mgr
 		info._resetTimer()
 	})
-	mgr.sessions[edPub(info.domain.Key)] = info
+	mgr.sessions[info.domain.Name] = info
 	return info
 }
 
 func (mgr *sessionManager) _sessionForInit(domain types.Domain, init *sessionInit) (*sessionInfo, *sessionBuffer) {
 	var info *sessionInfo
 	var buf *sessionBuffer
-	if info = mgr.sessions[edPub(domain.Key)]; info == nil {
+	if info = mgr.sessions[domain.Name]; info == nil {
 		info = mgr._newSession(domain, init.current, init.next, init.seq)
-		if buf = mgr.buffers[edPub(domain.Key)]; buf != nil {
+		if buf = mgr.buffers[domain.Name]; buf != nil {
 			buf.timer.Stop()
-			delete(mgr.buffers, edPub(domain.Key))
+			delete(mgr.buffers, domain.Name)
 			info.sendPub, info.sendPriv = buf.init.current, buf.currentPriv
 			info.nextPub, info.nextPriv = buf.init.next, buf.nextPriv
 			info._fixShared(0, 0)
@@ -111,7 +111,7 @@ func (mgr *sessionManager) _handleInit(domain types.Domain, init *sessionInit) {
 }
 
 func (mgr *sessionManager) _handleAck(domain types.Domain, ack *sessionAck) {
-	_, isOld := mgr.sessions[edPub(domain.Key)]
+	_, isOld := mgr.sessions[domain.Name]
 	if info, buf := mgr._sessionForInit(domain, &ack.sessionInit); info != nil {
 		if isOld {
 			info.handleAck(mgr, ack)
@@ -125,7 +125,7 @@ func (mgr *sessionManager) _handleAck(domain types.Domain, ack *sessionAck) {
 }
 
 func (mgr *sessionManager) _handleTraffic(domain types.Domain, msg []byte) {
-	if info := mgr.sessions[edPub(domain.Key)]; info != nil {
+	if info := mgr.sessions[domain.Name]; info != nil {
 		info.doRecv(mgr, msg)
 	} else {
 		// We don't know that the node really exists, it could be spoofed/replay
@@ -142,7 +142,7 @@ func (mgr *sessionManager) _handleTraffic(domain types.Domain, msg []byte) {
 func (mgr *sessionManager) writeTo(toDomain types.Domain, msg []byte) {
 	// WARNING: unsafe to call from within an actor, must only be exposed over the PacketConn functions (which are, themselves, unsafe for actors to call in most cases, since they may block)
 	phony.Block(mgr, func() {
-		if info := mgr.sessions[edPub(toDomain.Key)]; info != nil {
+		if info := mgr.sessions[toDomain.Name]; info != nil {
 			info.doSend(mgr, msg)
 		} else {
 			// Need to buffer the traffic
@@ -153,7 +153,7 @@ func (mgr *sessionManager) writeTo(toDomain types.Domain, msg []byte) {
 
 func (mgr *sessionManager) _bufferAndInit(toDomain types.Domain, msg []byte) {
 	var buf *sessionBuffer
-	if buf = mgr.buffers[edPub(toDomain.Key)]; buf == nil {
+	if buf = mgr.buffers[toDomain.Name]; buf == nil {
 		// Create a new buffer (including timer)
 		buf = new(sessionBuffer)
 		currentPub, currentPriv := newBoxKeys()
@@ -162,16 +162,16 @@ func (mgr *sessionManager) _bufferAndInit(toDomain types.Domain, msg []byte) {
 		buf.currentPriv = currentPriv
 		buf.nextPriv = nextPriv
 		buf.timer = time.AfterFunc(0, func() {})
-		mgr.buffers[edPub(toDomain.Key)] = buf
+		mgr.buffers[toDomain.Name] = buf
 	}
 	buf.data = msg
 	buf.timer.Stop()
 	mgr.sendInit(toDomain, &buf.init)
 	buf.timer = time.AfterFunc(sessionTimeout, func() {
 		mgr.Act(nil, func() {
-			if b := mgr.buffers[edPub(toDomain.Key)]; b == buf {
+			if b := mgr.buffers[toDomain.Name]; b == buf {
 				b.timer.Stop()
-				delete(mgr.buffers, edPub(toDomain.Key))
+				delete(mgr.buffers, toDomain.Name)
 			}
 		})
 	})
@@ -247,8 +247,8 @@ func (info *sessionInfo) _resetTimer() {
 	}
 	info.timer = time.AfterFunc(sessionTimeout, func() {
 		info.mgr.Act(nil, func() {
-			if oldInfo := info.mgr.sessions[edPub(info.domain.Key)]; oldInfo == info {
-				delete(info.mgr.sessions, edPub(info.domain.Key))
+			if oldInfo := info.mgr.sessions[info.domain.Name]; oldInfo == info {
+				delete(info.mgr.sessions, info.domain.Name)
 			}
 		})
 	})
