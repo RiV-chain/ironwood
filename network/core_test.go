@@ -35,25 +35,31 @@ func TestTwoNodes(t *testing.T) {
 	addrA := a.LocalAddr()
 	addrB := b.LocalAddr()
 	done := make(chan struct{})
+	msg := []byte("test")
 	go func() {
 		defer func() {
 			defer func() { recover() }()
 			close(done)
 		}()
-		msg := make([]byte, 2048)
-		n, from, err := b.ReadFrom(msg)
+		read := make([]byte, 2048)
+		n, from, err := b.ReadFrom(read)
 		if err != nil {
 			panic("err")
 		}
-		msg = msg[:n]
-		aA := addrA.(types.Addr)
-		fA := from.(types.Addr)
-		if !bytes.Equal([]byte(aA.String()), []byte(fA.String())) {
+		bs := read[:n]
+		if !bytes.Equal(bs, msg) {
+			println(string(bs), string(msg))
+			panic("unequal messages")
+		}
+		aA := types.Domain(addrA.(types.Addr))
+		fA := types.Domain(from.(types.Addr))
+		if !aA.Equal(fA) {
 			panic("wrong source address")
 		}
+
 	}()
 	go func() {
-		msg := []byte("test")
+
 		for {
 			select {
 			case <-done:
